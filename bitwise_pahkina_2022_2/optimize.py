@@ -2,32 +2,39 @@
 
 import numpy as np
 
-from pymoo.core.problem import ElementwiseProblem
-from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
+from pymoo.core.duplicate import ElementwiseDuplicateElimination
+from pymoo.core.problem import ElementwiseProblem
+from pymoo.core.result import Result
 from pymoo.optimize import minimize
+from pymoo.util.termination.default import SingleObjectiveDefaultTermination
 
 from .network import BaseNetwork
 
 
 class MyProblem(ElementwiseProblem):
-    
+
     """Network optimization problem"""
 
-    def __init__(self, base_network: BaseNetwork):
+    def __init__(self, base_network: BaseNetwork, **kwargs):
         self.base_network = base_network
-        
         super().__init__(
             n_var=len(self.base_network.edges),
-            n_obj=1, n_constr=0, xl=0, xu=1)
+            n_obj=1,
+            n_constr=1,
+            xl=0,
+            xu=1,
+            **kwargs,
+        )
 
     def _evaluate(self, x, out, *args, **kwargs):
         x_binary = np.round(x).astype(int)
-        del_edges = (x_binary==0).nonzero()[0]
+        del_edges = (x_binary == 0).nonzero()[0]
 
         new_net = self.base_network.as_graph(remove_edges=del_edges.tolist())
-        
-        out["F"] = -self.base_network.comparison_score(new_net)
+
+        out["F"] = new_net.evaluate()
+        out["G"] = -1 if new_net.is_connected else 1
         out["pheno"] = x_binary
         out["hash"] = hash(str(del_edges))
 
@@ -38,11 +45,24 @@ class MyElementwiseDuplicateElimination(ElementwiseDuplicateElimination):
 
     def is_equal(self, a, b):
         return a.get("hash")[0] == b.get("hash")[0]
-    
 
-def optimize(base_network: BaseNetwork):
-    """Main optimization method"""
-    np.random.seed(2)
+
+def optimize(
+    base_network: BaseNetwork, termination: dict | None = None, **kwargs
+) -> Result:
+    """Main optimization method
+
+    Args:
+        base_network (BaseNetwork): Base network for optimization
+        termination (dict | None, optional): Keyword arguments
+          for termination criteria. See
+          :func:`~pymoo.util.termination.default.SingleObjectiveDefaultTermination`.
+          Defaults to None.
+        kwargs: keyword arguments to minimization problem
+
+    Returns:
+        Result: pymoo optimization result
+    """
     problem = MyProblem(base_network)
 
     algorithm = BRKGA(
@@ -50,17 +70,11 @@ def optimize(base_network: BaseNetwork):
         n_offsprings=700,
         n_mutants=100,
         bias=0.7,
-        eliminate_duplicates=MyElementwiseDuplicateElimination())
+        eliminate_duplicates=MyElementwiseDuplicateElimination(),
+    )
 
-    res = minimize(problem,
-                algorithm,
-                ("n_gen", 75),
-                seed=1,
-                verbose=True)
+    termination = termination = SingleObjectiveDefaultTermination(**termination)
 
-    print(f"Best solution found: \nF = {res.F}")
-    
-    best_x_binary = res.opt.get("pheno")[0]
-    removed_edges = (best_x_binary==0).nonzero()[0]
-    print("Solution:",)
-    print(', '.join(removed_edges.astype(str)))
+    res = minimize(problem, algorithm, termination, **kwargs)
+
+    return res

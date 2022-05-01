@@ -9,18 +9,23 @@ from .optimize import optimize
 def main():
     """Generate base network, create variations, find best solution"""
     base_net = BaseNetwork.from_json(Path(__file__).parent / "koodipahkina-data.json")
+    res = optimize(base_net, termination={"n_max_gen": 20}, seed=1, verbose=True)
 
-    optimize(base_net)
+    print(f"Best solution found: \nF = {res.F}")
 
-    # i = 0
-    # for del_edges in [
-    #     (0, 2, 6),
-    #     (7, 3, 5, 1, 10, 20),
-    # ]:
-    #     net_x = base_net.as_graph(remove_edges=del_edges)
-    #     print(f"{i:>6} {base_net.comparison_score(net_x):9.3f} {del_edges}")
+    best_x_binary = res.opt.get("pheno")[0]
+    removed_edges = (best_x_binary == 0).nonzero()[0]
+    new_net = base_net.as_graph(remove_edges=removed_edges.tolist())
 
-    #     i += 1
+    score = base_net.comparison_score(new_net)
+    print(f"Best score: {score:.3f}")
+
+    print(
+        "Solution:",
+    )
+    print(", ".join(removed_edges.astype(str)))
+
+    print(res.exec_time)
 
 
 if __name__ == "__main__":

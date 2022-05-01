@@ -141,11 +141,16 @@ class NetworkGraph:
     def evaluate(self, A=0.1, B=2.1) -> float:  # pylint: disable=invalid-name
         """Evaluate solution fitness"""
         if self._score is None:
-            if not nx.is_connected(self._graph):
+            if not self.is_connected:
                 self._score = sys.float_info.max
             else:
                 self._score = A * self.total_weight + B * self._avg_distance()
         return self._score
+
+    @property
+    def is_connected(self):
+        """Underlying graph is connected"""
+        return nx.is_connected(self._graph)
 
     @property
     def total_weight(self) -> float:
