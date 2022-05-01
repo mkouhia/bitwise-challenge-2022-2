@@ -65,10 +65,12 @@ def optimize(
     """
     problem = MyProblem(base_network)
 
+    population_size = 2 * problem.n_var
+
     algorithm = BRKGA(
-        n_elites=200,
-        n_offsprings=700,
-        n_mutants=100,
+        n_elites=int(population_size * 0.2),
+        n_offsprings=int(population_size * 0.7),
+        n_mutants=int(population_size * 0.1),
         bias=0.7,
         eliminate_duplicates=MyElementwiseDuplicateElimination(),
     )
