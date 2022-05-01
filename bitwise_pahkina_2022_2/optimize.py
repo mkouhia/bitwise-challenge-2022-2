@@ -1,10 +1,15 @@
 """Optimization implementation"""
 
-import numpy as np
+import multiprocessing
+import os
 
+import numpy as np
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
-from pymoo.core.duplicate import ElementwiseDuplicateElimination
-from pymoo.core.problem import ElementwiseProblem
+from pymoo.core.duplicate import (
+    ElementwiseDuplicateElimination,
+    DefaultDuplicateElimination,
+)
+from pymoo.core.problem import ElementwiseProblem, starmap_parallelized_eval
 from pymoo.core.result import Result
 from pymoo.optimize import minimize
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
@@ -16,8 +21,10 @@ class MyProblem(ElementwiseProblem):
 
     """Network optimization problem"""
 
-    def __init__(self, base_network: BaseNetwork, **kwargs):
-        self.base_network = base_network
+    def __init__(self, network_json: os.PathLike, **kwargs):
+        network_json = BaseNetwork.from_json(network_json)
+        self.base_network = network_json
+
         super().__init__(
             n_var=len(self.base_network.edges),
             n_obj=1,
@@ -43,17 +50,20 @@ class MyElementwiseDuplicateElimination(ElementwiseDuplicateElimination):
 
     """Eliminate duplicates based on result hash"""
 
+    def __init__(self, cmp_func=None, **kwargs) -> None:
+        super().__init__(self.is_equal, **kwargs)
+
     def is_equal(self, a, b):
         return a.get("hash")[0] == b.get("hash")[0]
 
 
 def optimize(
-    base_network: BaseNetwork, termination: dict | None = None, **kwargs
+    network_json: os.PathLike, termination: dict | None = None, **kwargs
 ) -> Result:
     """Main optimization method
 
     Args:
-        base_network (BaseNetwork): Base network for optimization
+        network_json (os.PathLike): Location to network specification
         termination (dict | None, optional): Keyword arguments
           for termination criteria. See
           :func:`~pymoo.util.termination.default.SingleObjectiveDefaultTermination`.
@@ -63,7 +73,12 @@ def optimize(
     Returns:
         Result: pymoo optimization result
     """
-    problem = MyProblem(base_network)
+    n_threads = multiprocessing.cpu_count()
+    pool = multiprocessing.Pool(n_threads)
+
+    problem = MyProblem(
+        network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
+    )
 
     algorithm = BRKGA(
         n_elites=200,
