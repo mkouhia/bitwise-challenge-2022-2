@@ -29,7 +29,7 @@ def main(argv: list[str] = None):
     if parsed_args.quiet:
         return
 
-    base_net = BaseNetwork.from_json()
+    base_net = BaseNetwork.from_json(network_json)
 
     best_x_binary = res.opt.get("pheno")[0]
     removed_edges = (best_x_binary == 0).nonzero()[0]
