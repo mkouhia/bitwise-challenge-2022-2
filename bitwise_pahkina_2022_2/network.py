@@ -161,4 +161,6 @@ class NetworkGraph:
 
     def _avg_distance(self) -> float:
         """Average distance of each point to every other point"""
-        return nx.average_shortest_path_length(self._graph, weight="weight")
+        return nx.average_shortest_path_length(
+            self._graph, weight="weight", method="floyd-warshall-numpy"
+        )
