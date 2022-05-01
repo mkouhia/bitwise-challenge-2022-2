@@ -12,6 +12,7 @@ from pymoo.core.problem import ElementwiseProblem
 from pymoo.core.result import Result
 from pymoo.operators.sampling.rnd import FloatRandomSampling
 from pymoo.optimize import minimize
+from pymoo.util.display import SingleObjectiveDisplay
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
 
 from .network import BaseNetwork
@@ -50,6 +51,28 @@ class MyElementwiseDuplicateElimination(ElementwiseDuplicateElimination):
 
     def is_equal(self, a, b):
         return a.get("hash")[0] == b.get("hash")[0]
+
+
+class MyDisplay(SingleObjectiveDisplay):  # pylint: disable=too-few-public-methods
+
+    """Modified display
+
+    Include evaluations per second
+    """
+
+    def __init__(self, favg=True, **kwargs):
+        super().__init__(favg, **kwargs)
+        self._prev_time = time.time()
+
+    def _do(self, problem, evaluator, algorithm):
+        super()._do(problem, evaluator, algorithm)
+        time_now = time.time()
+
+        self.output.append(
+            "eval_per_s", algorithm.pop.size / (time_now - self._prev_time)
+        )
+
+        self._prev_time = time_now
 
 
 class MyCallback(Callback):
@@ -135,6 +158,7 @@ def optimize(
         eliminate_duplicates=MyElementwiseDuplicateElimination(),
         sampling=sampling,
         callback=MyCallback(x_path=x_path, metric_log=metric_log),
+        display=MyDisplay(),
     )
 
     termination = termination = SingleObjectiveDefaultTermination(**termination)
