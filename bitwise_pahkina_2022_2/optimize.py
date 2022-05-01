@@ -2,15 +2,19 @@
 
 import multiprocessing
 import os
+from pathlib import Path
+import time
+import numpy as np
 
 import numpy as np
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
-from pymoo.core.duplicate import (
-    ElementwiseDuplicateElimination,
-    DefaultDuplicateElimination,
-)
+from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem, starmap_parallelized_eval
+from pymoo.core.callback import Callback
+from pymoo.core.duplicate import ElementwiseDuplicateElimination
+from pymoo.core.problem import ElementwiseProblem
 from pymoo.core.result import Result
+from pymoo.operators.sampling.rnd import FloatRandomSampling
 from pymoo.optimize import minimize
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
 
@@ -57,8 +61,55 @@ class MyElementwiseDuplicateElimination(ElementwiseDuplicateElimination):
         return a.get("hash")[0] == b.get("hash")[0]
 
 
+class MyCallback(Callback):
+
+    """Callback on each generation"""
+
+    def __init__(
+        self,
+        x_path: os.PathLike | None = None,
+        metric_log: os.PathLike | None = None,
+    ) -> None:
+        super().__init__()
+
+        self.x_path = Path(x_path)
+        self.metric_log = Path(metric_log)
+
+        for key in ["n_gen", "time", "fopt"]:
+            self.data[key] = []
+        self._init_log()
+
+    def _init_log(self):
+        if self.metric_log.exists():
+            self.metric_log.unlink()
+        else:
+            self.metric_log.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(self.metric_log, "w", encoding="utf8") as metric_file:
+            metric_file.write(",".join(self.data.keys()) + "\n")
+
+    def notify(self, algorithm, **kwargs):
+        self.data["n_gen"].append(algorithm.n_gen)
+        self.data["time"].append(time.time())
+        self.data["fopt"].append(algorithm.pop.get("F").min())
+
+        if self.x_path is not None:
+            population_x = algorithm.pop.get("X")
+            np.save(self.x_path, population_x)
+
+        if self.metric_log is not None:
+            with open(self.metric_log, "a", encoding="utf8") as metric_file:
+                line_vals = (str(self.data[key][-1]) for key in self.data)
+                metric_file.write(",".join(line_vals) + "\n")
+
+
 def optimize(
-    network_json: os.PathLike, termination: dict | None = None, **kwargs
+    network_json: os.PathLike,
+    termination: dict | None = None,
+    x_path: os.PathLike | None = None,
+    metric_log: os.PathLike | None = None,
+    resume: bool = False,
+    **kwargs
 ) -> Result:
     """Main optimization method
 
@@ -68,6 +119,12 @@ def optimize(
           for termination criteria. See
           :func:`~pymoo.util.termination.default.SingleObjectiveDefaultTermination`.
           Defaults to None.
+        x_path (os.PathLike | None): location for saving intermediate
+          x values for population.
+        metric_log (os.PathLike | None): location for logging
+          optimization running metrics.
+        resume (bool): continue from previous result in x_path.
+          Defaults to False.
         kwargs: keyword arguments to minimization problem
 
     Returns:
@@ -80,12 +137,18 @@ def optimize(
         network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
     )
 
+    sampling = np.load(x_path) if resume else FloatRandomSampling()
+
+    population_size = 2 * problem.n_var
+
     algorithm = BRKGA(
-        n_elites=200,
-        n_offsprings=700,
-        n_mutants=100,
+        n_elites=int(population_size * 0.2),
+        n_offsprings=int(population_size * 0.7),
+        n_mutants=int(population_size * 0.1),
         bias=0.7,
         eliminate_duplicates=MyElementwiseDuplicateElimination(),
+        sampling=sampling,
+        callback=MyCallback(x_path=x_path, metric_log=metric_log),
     )
 
     termination = termination = SingleObjectiveDefaultTermination(**termination)
