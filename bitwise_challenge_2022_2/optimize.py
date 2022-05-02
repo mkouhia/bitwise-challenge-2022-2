@@ -1,6 +1,6 @@
 """Optimization implementation"""
 
-import multiprocessing
+from multiprocessing.pool import Pool
 import os
 from pathlib import Path
 import shutil
@@ -140,6 +140,7 @@ class MyCallback(Callback):
 
 def optimize(
     network_json: os.PathLike,
+    pool: Pool | None = None,
     termination: dict | None = None,
     x_path: os.PathLike | None = None,
     metric_log: os.PathLike | None = None,
@@ -150,6 +151,8 @@ def optimize(
 
     Args:
         network_json (os.PathLike): Location to network specification
+        pool (Pool | None): process pool for problem
+          evaluation. If pool is None, do not use multiprocessing.
         termination (dict | None, optional): Keyword arguments
           for termination criteria. See
           :func:`~pymoo.util.termination.default.SingleObjectiveDefaultTermination`.
@@ -165,11 +168,11 @@ def optimize(
     Returns:
         Result: pymoo optimization result
     """
-    n_threads = multiprocessing.cpu_count()
-    pool = multiprocessing.Pool(n_threads)
-
-    problem = MyProblem(
-        network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
+    if pool is None:
+        problem = MyProblem(network_json)
+    else:
+        problem = MyProblem(
+            network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
     )
 
     sampling = np.load(x_path) if resume else FloatRandomSampling()

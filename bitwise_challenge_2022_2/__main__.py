@@ -1,7 +1,9 @@
 """Command line interface"""
 
 import argparse
+import multiprocessing
 from pathlib import Path
+import signal
 import sys
 
 from pymoo.core.result import Result
@@ -16,12 +18,15 @@ def main(argv: list[str] = None):
     Args:
         argv (list[str]): List of command line arguments. Defaults to None.
     """
+    n_threads = multiprocessing.cpu_count()
+    pool = multiprocessing.Pool(n_threads, _init_worker)
     try:
         parsed_args = _parse_args(argv)
 
         network_json = Path(__file__).parent / "koodipahkina-data.json"
         res = optimize(
             network_json,
+            pool=pool,
             termination={"n_max_gen": parsed_args.max_gen},
             seed=1,
             verbose=not parsed_args.quiet,
@@ -36,7 +41,16 @@ def main(argv: list[str] = None):
 
     except KeyboardInterrupt:
         print("\nInterrupted, exiting")
+        pool.terminate()
+        pool.join()
         sys.exit(1)
+    else:
+        pool.close()
+        pool.join()
+
+
+def _init_worker():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 def _print_report(res: Result, base_net: BaseNetwork):
