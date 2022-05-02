@@ -42,7 +42,7 @@ class MyProblem(ElementwiseProblem):
         out["F"] = new_net.evaluate()
         out["G"] = -1 if new_net.is_connected else 1
         out["pheno"] = x_binary
-        out["hash"] = hash(str(del_edges))
+        out["hash"] = hash(del_edges.data.tobytes())
 
 
 class MyElementwiseDuplicateElimination(ElementwiseDuplicateElimination):
