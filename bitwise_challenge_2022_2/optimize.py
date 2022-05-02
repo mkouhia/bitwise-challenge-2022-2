@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import shutil
 import time
 import numpy as np
 
@@ -77,7 +78,12 @@ class MyDisplay(SingleObjectiveDisplay):  # pylint: disable=too-few-public-metho
 
 class MyCallback(Callback):
 
-    """Callback on each generation"""
+    """Callback on each generation
+
+    Attributes:
+        x_path (Path): location for X array storage file
+        metric_log (Path): location for metric log file
+    """
 
     def __init__(
         self,
@@ -108,13 +114,19 @@ class MyCallback(Callback):
         self.data["fopt"].append(algorithm.pop.get("F").min())
 
         if self.x_path is not None:
-            population_x = algorithm.pop.get("X")
-            np.save(self.x_path, population_x)
+            self._write_x_file(algorithm.pop.get("X"))
 
         if self.metric_log is not None:
             with open(self.metric_log, "a", encoding="utf8") as metric_file:
                 line_vals = (str(self.data[key][-1]) for key in self.data)
                 metric_file.write(",".join(line_vals) + "\n")
+
+    def _write_x_file(self, x_array):
+        """Write x array to file, using temporary .bak file"""
+        bak_path = self.x_path.parent / (self.x_path.name + ".bak")
+        shutil.copy(self.x_path, bak_path)
+        np.save(self.x_path, x_array)
+        os.unlink(bak_path)
 
 
 def optimize(
