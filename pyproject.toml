@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "bitwise-pahkina-2022-2"
+name = "bitwise-challenge-2022-2"
 version = "0.1.0"
 description = ""
 authors = ["Mikko Kouhia <mikko.kouhia@iki.fi>"]
