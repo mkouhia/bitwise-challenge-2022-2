@@ -2,6 +2,9 @@
 
 import argparse
 from pathlib import Path
+import sys
+
+from pymoo.core.result import Result
 
 from .network import BaseNetwork
 from .optimize import optimize
@@ -13,24 +16,30 @@ def main(argv: list[str] = None):
     Args:
         argv (list[str]): List of command line arguments. Defaults to None.
     """
-    parsed_args = _parse_args(argv)
+    try:
+        parsed_args = _parse_args(argv)
 
-    network_json = Path(__file__).parent / "koodipahkina-data.json"
-    res = optimize(
-        network_json,
-        termination={"n_max_gen": parsed_args.max_gen},
-        seed=1,
-        verbose=not parsed_args.quiet,
-        x_path=parsed_args.xpath,
-        metric_log=parsed_args.metric_log,
-        resume=parsed_args.resume,
-    )
+        network_json = Path(__file__).parent / "koodipahkina-data.json"
+        res = optimize(
+            network_json,
+            termination={"n_max_gen": parsed_args.max_gen},
+            seed=1,
+            verbose=not parsed_args.quiet,
+            x_path=parsed_args.xpath,
+            metric_log=parsed_args.metric_log,
+            resume=parsed_args.resume,
+        )
 
-    if parsed_args.quiet:
-        return
+        if not parsed_args.quiet:
+            base_net = BaseNetwork.from_json(network_json)
+            _print_report(res, base_net)
 
-    base_net = BaseNetwork.from_json(network_json)
+    except KeyboardInterrupt:
+        print("\nInterrupted, exiting")
+        sys.exit(1)
 
+
+def _print_report(res: Result, base_net: BaseNetwork):
     best_x_binary = res.opt.get("pheno")[0]
     removed_edges = (best_x_binary == 0).nonzero()[0]
     new_net = base_net.as_graph(remove_edges=removed_edges.tolist())
