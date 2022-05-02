@@ -1,7 +1,9 @@
 """Command line interface"""
 
 import argparse
+import multiprocessing
 from pathlib import Path
+import signal
 import sys
 
 from pymoo.core.result import Result
@@ -16,14 +18,19 @@ def main(argv: list[str] = None):
     Args:
         argv (list[str]): List of command line arguments. Defaults to None.
     """
-    try:
-        parsed_args = _parse_args(argv)
+    parsed_args = _parse_args(argv)
 
-        base_net = BaseNetwork.from_json(
-            Path(__file__).parent / "koodipahkina-data.json"
-        )
+    if parsed_args.multiprocessing:
+        n_threads = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(n_threads, _init_worker)
+    else:
+        pool = None
+
+    try:
+        network_json = Path(__file__).parent / "koodipahkina-data.json"
         res = optimize(
-            base_net,
+            network_json,
+            pool=pool,
             termination={"n_max_gen": parsed_args.max_gen},
             seed=1,
             verbose=not parsed_args.quiet,
@@ -33,11 +40,23 @@ def main(argv: list[str] = None):
         )
 
         if not parsed_args.quiet:
+            base_net = BaseNetwork.from_json(network_json)
             _print_report(res, base_net)
 
     except KeyboardInterrupt:
         print("\nInterrupted, exiting")
+        if pool is not None:
+            pool.terminate()
+            pool.join()
         sys.exit(1)
+    else:
+        if pool is not None:
+            pool.close()
+            pool.join()
+
+
+def _init_worker():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 def _print_report(res: Result, base_net: BaseNetwork):
@@ -72,6 +91,11 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
         help="Location for saving intermediate x values for population. Default: opt_X_latest.npy",
     )
     parser.add_argument("--resume", action="store_true", help="Resume from xfile")
+    parser.add_argument(
+        "--multiprocessing",
+        action="store_true",
+        help="Use multiprocessing for problem evaluation",
+    )
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress output")
 
     return parser.parse_args(args)

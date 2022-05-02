@@ -1,12 +1,16 @@
 """Optimization implementation"""
 
+from multiprocessing.pool import Pool
 import os
 from pathlib import Path
 import shutil
 import time
 import numpy as np
 
+import numpy as np
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
+from pymoo.core.duplicate import ElementwiseDuplicateElimination
+from pymoo.core.problem import ElementwiseProblem, starmap_parallelized_eval
 from pymoo.core.callback import Callback
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem
@@ -23,8 +27,10 @@ class MyProblem(ElementwiseProblem):
 
     """Network optimization problem"""
 
-    def __init__(self, base_network: BaseNetwork, **kwargs):
-        self.base_network = base_network
+    def __init__(self, network_json: os.PathLike, **kwargs):
+        network_json = BaseNetwork.from_json(network_json)
+        self.base_network = network_json
+
         super().__init__(
             n_var=len(self.base_network.edges),
             n_obj=1,
@@ -49,6 +55,9 @@ class MyProblem(ElementwiseProblem):
 class MyElementwiseDuplicateElimination(ElementwiseDuplicateElimination):
 
     """Eliminate duplicates based on result hash"""
+
+    def __init__(self, cmp_func=None, **kwargs) -> None:
+        super().__init__(self.is_equal, **kwargs)
 
     def is_equal(self, a, b):
         return a.get("hash")[0] == b.get("hash")[0]
@@ -130,7 +139,8 @@ class MyCallback(Callback):
 
 
 def optimize(
-    base_network: BaseNetwork,
+    network_json: os.PathLike,
+    pool: Pool | None = None,
     termination: dict | None = None,
     x_path: os.PathLike | None = None,
     metric_log: os.PathLike | None = None,
@@ -140,7 +150,9 @@ def optimize(
     """Main optimization method
 
     Args:
-        base_network (BaseNetwork): Base network for optimization
+        network_json (os.PathLike): Location to network specification
+        pool (Pool | None): process pool for problem
+          evaluation. If pool is None, do not use multiprocessing.
         termination (dict | None, optional): Keyword arguments
           for termination criteria. See
           :func:`~pymoo.util.termination.default.SingleObjectiveDefaultTermination`.
@@ -156,7 +168,12 @@ def optimize(
     Returns:
         Result: pymoo optimization result
     """
-    problem = MyProblem(base_network)
+    if pool is None:
+        problem = MyProblem(network_json)
+    else:
+        problem = MyProblem(
+            network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
+        )
 
     sampling = np.load(x_path) if resume else FloatRandomSampling()
 
