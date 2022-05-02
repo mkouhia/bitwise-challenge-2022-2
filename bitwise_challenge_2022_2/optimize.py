@@ -173,7 +173,7 @@ def optimize(
     else:
         problem = MyProblem(
             network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
-    )
+        )
 
     sampling = np.load(x_path) if resume else FloatRandomSampling()
 
