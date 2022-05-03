@@ -67,14 +67,21 @@ class MyDisplay(SingleObjectiveDisplay):  # pylint: disable=too-few-public-metho
     Include evaluations per second
     """
 
-    def __init__(self, favg=True, **kwargs):
+    def __init__(self, favg=True, n_gen_offset: int = 0, **kwargs):
         super().__init__(favg, **kwargs)
+        self.n_gen_offset = n_gen_offset
         self._prev_time = time.time()
 
     def _do(self, problem, evaluator, algorithm):
         super()._do(problem, evaluator, algorithm)
         time_now = time.time()
 
+        # Offset n_gen in printout
+        self.output.attrs[0][1] += self.n_gen_offset
+
+        self.output.append(
+            "x_avg", algorithm.pop.get("pheno").mean()
+        )
         self.output.append(
             "eval_per_s", algorithm.pop.size / (time_now - self._prev_time)
         )
@@ -96,15 +103,16 @@ class MyCallback(Callback):
         x_path: os.PathLike | None = None,
         metric_log: os.PathLike | None = None,
         resume: bool = False,
+        n_gen_offset: int = 0,
     ) -> None:
         super().__init__()
 
         self.x_path = Path(x_path)
         self.metric_log = Path(metric_log)
 
-        for key in ["n_gen", "time", "fopt", "eval_per_s"]:
+        for key in ["n_gen", "f_opt", "f_avg", "cv_avg", "x_avg", "eval_per_s"]:
             self.data[key] = []
-        self._n_gen_offset = 0
+        self.n_gen_offset = n_gen_offset
         self._init_log(resume=resume)
         self._prev_time = time.time()
 
@@ -112,25 +120,25 @@ class MyCallback(Callback):
         if not resume and self.metric_log.exists():
             self.metric_log.unlink()
 
-        if not self.metric_log.exists:
+        if not self.metric_log.exists():
             self.metric_log.parent.mkdir(parents=True, exist_ok=True)
             with open(self.metric_log, "w", encoding="utf8") as metric_file:
                 metric_file.write(",".join(self.data.keys()) + "\n")
-        elif resume:
-            with open(self.metric_log, "r", encoding="utf-8") as metric_file:
-                for line in metric_file:
-                    pass  # skip to last line
-                try:
-                    self._n_gen_offset = int(line.split(",")[0])
-                except (IndexError, ValueError):
-                    pass
 
     def notify(self, algorithm, **kwargs):
         time_now = time.time()
 
-        self.data["n_gen"].append(algorithm.n_gen + self._n_gen_offset)
-        self.data["time"].append(time.time())
-        self.data["fopt"].append(algorithm.pop.get("F").min())
+        opt = algorithm.opt[0]
+        F, CV, X, feasible = algorithm.pop.get("F", "CV", "pheno", "feasible")
+        feasible = np.where(feasible[:, 0])[0]
+
+        self.data["n_gen"].append(algorithm.n_gen + self.n_gen_offset)
+        self.data["f_opt"].append(opt.F[0] if opt.feasible[0] else np.NaN)
+        self.data["f_avg"].append(
+            np.mean(F[feasible]) if (opt.feasible[0] and len(feasible) > 0) else np.NaN
+        )
+        self.data["cv_avg"].append(np.mean(CV))
+        self.data["x_avg"].append(np.mean(X))
         self.data["eval_per_s"].append(
             algorithm.pop.size / (time_now - self._prev_time)
         )
@@ -201,6 +209,7 @@ def optimize(
         if resume
         else np.random.beta(4, 2, (population_size, problem.n_var))
     )
+    n_gen_offset = _get_n_gen_offset(metric_log=metric_log) if resume else 0
 
     algorithm = BRKGA(
         n_elites=int(population_size * 0.2),
@@ -209,8 +218,13 @@ def optimize(
         bias=0.7,
         eliminate_duplicates=MyElementwiseDuplicateElimination(),
         sampling=sampling,
-        callback=MyCallback(x_path=x_path, metric_log=metric_log, resume=resume),
-        display=MyDisplay(),
+        callback=MyCallback(
+            x_path=x_path,
+            metric_log=metric_log,
+            resume=resume,
+            n_gen_offset=n_gen_offset,
+        ),
+        display=MyDisplay(n_gen_offset=n_gen_offset),
     )
 
     termination = termination = SingleObjectiveDefaultTermination(**termination)
@@ -218,3 +232,22 @@ def optimize(
     res = minimize(problem, algorithm, termination, **kwargs)
 
     return res
+
+
+def _get_n_gen_offset(metric_log: os.PathLike | None):
+    n_gen = 0
+
+    if metric_log is None or not Path(metric_log).exists():
+        return n_gen
+
+    with open(metric_log, "r", encoding="utf-8") as metric_file:
+
+        for line in metric_file:
+            pass  # skip to last line
+        try:
+            parts = line.strip().split(",")
+            n_gen = int(parts[0])
+        except (IndexError, ValueError):
+            pass
+
+    return n_gen

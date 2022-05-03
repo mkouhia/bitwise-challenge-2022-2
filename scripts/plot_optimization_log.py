@@ -66,12 +66,13 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--y1",
-        default="fopt",
-        help="Variables to be plotted on the left y-axis. Separated by comma. Default: fopt",
+        default="f_opt,f_avg",
+        help="Variables to be plotted on the left y-axis. Separated by comma. Default: f_opt,f_avg",
     )
     parser.add_argument(
         "--y2",
-        help="Variables to be plotted on the right y-axis. Separated by comma.",
+        default="cv_avg,x_avg",
+        help="Variables to be plotted on the right y-axis. Separated by comma. Default: cv_avg,x_avg",
     )
     return parser.parse_args(args)
 
