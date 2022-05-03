@@ -9,6 +9,7 @@ import sys
 from typing import Any, Iterable
 
 import numpy as np
+import numba
 
 
 class BaseNetwork:
@@ -212,18 +213,31 @@ class NetworkGraph:
         return self._total_weight
 
     def _avg_distance(self) -> float:
-        """Average distance of each point to every other point
-
-        Heavily borrowed from networkx floyd_warshall_numpy
-        """
+        """Average distance of each point to every other point"""
         mat = self._to_numpy_adjacency_matrix(not_edge=np.inf)
         np.fill_diagonal(mat, 0)
         node_count, _ = mat.shape
 
-        for i in range(node_count):
-            mat = np.minimum(mat, mat[i, :][np.newaxis, :] + mat[:, i][:, np.newaxis])
+        mat = self.floyd_distance(mat, node_count)
 
-        return mat.sum() / (node_count * (node_count - 1))
+        score = mat.sum() / (node_count * (node_count - 1))
+
+        if score == np.inf:
+            print(mat)
+
+        return score
+
+    @staticmethod
+    @numba.njit(fastmath=True)
+    def floyd_distance(matrix, n):
+        """Calculate Floyd-Warshall distance matrix"""
+        # pylint: disable=not-an-iterable
+        for k in range(n):
+            for i in range(n):
+                for j in range(n):
+                    if matrix[i, j] > matrix[i, k] + matrix[k, j]:
+                        matrix[i, j] = matrix[i, k] + matrix[k, j]
+        return matrix
 
     def _to_numpy_adjacency_matrix(self, not_edge=0.0) -> np.ndarray:
         """Create adjacency matrix as numpy array
