@@ -79,9 +79,7 @@ class MyDisplay(SingleObjectiveDisplay):  # pylint: disable=too-few-public-metho
         # Offset n_gen in printout
         self.output.attrs[0][1] += self.n_gen_offset
 
-        self.output.append(
-            "x_avg", algorithm.pop.get("pheno").mean()
-        )
+        self.output.append("x_avg", algorithm.pop.get("pheno").mean())
         self.output.append(
             "eval_per_s", algorithm.pop.size / (time_now - self._prev_time)
         )
