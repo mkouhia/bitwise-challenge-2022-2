@@ -131,10 +131,15 @@ class MyCallback(Callback):
 
     def _write_x_file(self, x_array):
         """Write x array to file, using temporary .bak file"""
-        bak_path = self.x_path.parent / (self.x_path.name + ".bak")
-        shutil.copy(self.x_path, bak_path)
+        handle_bak = self.x_path.exists()
+        if handle_bak:
+            bak_path = self.x_path.parent / (self.x_path.name + ".bak")
+            shutil.copy(self.x_path, bak_path)
+
         np.save(self.x_path, x_array)
-        os.unlink(bak_path)
+
+        if handle_bak:
+            os.unlink(bak_path)
 
 
 def optimize(
