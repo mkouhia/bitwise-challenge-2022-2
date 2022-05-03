@@ -1,6 +1,6 @@
 """High level tests"""
 
-from bitwise_pahkina_2022_2 import __version__
+from bitwise_challenge_2022_2 import __version__
 
 
 def test_version():
