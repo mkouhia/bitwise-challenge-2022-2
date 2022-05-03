@@ -112,6 +112,7 @@ class NetworkGraph:
         self._graph = graph
         self._total_weight: float | None = None
         self._score: float | None = None
+        self._is_connected: bool | None = None
 
     def __repr__(self):
         return f"NetworkGraph(graph={repr(self._graph)})"
@@ -135,8 +136,10 @@ class NetworkGraph:
         edge_weight = self._graph.edges[id_a, id_b]["weight"]
 
         self._graph.remove_edge(id_a, id_b)
-        self._total_weight -= edge_weight
+        if self._total_weight is not None:
+            self._total_weight -= edge_weight
         self._score = None
+        self._is_connected = None
 
     def evaluate(self, A=0.1, B=2.1) -> float:  # pylint: disable=invalid-name
         """Evaluate solution fitness"""
@@ -150,7 +153,9 @@ class NetworkGraph:
     @property
     def is_connected(self):
         """Underlying graph is connected"""
-        return nx.is_connected(self._graph)
+        if self._is_connected is None:
+            self._is_connected = nx.is_connected(self._graph)
+        return self._is_connected
 
     @property
     def total_weight(self) -> float:
