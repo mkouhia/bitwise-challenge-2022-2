@@ -1,5 +1,6 @@
 """Network implementation"""
 
+from collections import defaultdict, deque
 import json
 import locale
 import math
@@ -115,7 +116,7 @@ class BaseNetwork:
 class NetworkGraph:
 
     """Modified network graph
-    
+
     Attributes:
         edges (list[tuple[int, int, float]]): list of (id_from, id_to, weight)
     """
@@ -152,7 +153,7 @@ class NetworkGraph:
 
         self._score = None
         self._is_connected = None
-        
+
     def _edge_index(self, id_a: int, id_b: int) -> int:
         """Get index of edge in self.edges by start and end
 
@@ -184,10 +185,37 @@ class NetworkGraph:
     def is_connected(self):
         """Underlying graph is connected"""
         if self._is_connected is None:
-            graph = nx.Graph()
-            graph.add_weighted_edges_from(self.edges)
-            self._is_connected = nx.is_connected(graph)
+            self._is_connected = self._is_connected_bfs()
         return self._is_connected
+
+    def _build_adjacency_list(self) -> dict[list]:
+        ad_list = defaultdict(list)
+        for (id_a, id_b, _) in self.edges:
+            ad_list[id_a].append(id_b)
+            ad_list[id_b].append(id_a)
+        return ad_list
+
+    def _is_connected_bfs(self) -> bool:
+        """Check connectiviness by performing BFS
+
+        Returns:
+            bool: True if all nodes are reached
+        """
+        graph = self._build_adjacency_list()
+        root = graph[next(iter(graph))][0]
+
+        visited = {root}
+        queue = deque([root])
+
+        while queue:
+            source = queue.popleft()
+
+            for i in graph[source]:
+                if i not in visited:
+                    queue.append(i)
+                    visited.add(i)
+
+        return len(visited) == len(graph)
 
     @property
     def total_weight(self) -> float:
