@@ -1,6 +1,6 @@
 """Network implementation"""
 
-from collections import defaultdict, deque
+from collections import deque
 import json
 import locale
 import math
@@ -8,7 +8,7 @@ import os
 import sys
 from typing import Any, Iterable
 
-import networkx as nx
+import numpy as np
 
 
 class BaseNetwork:
@@ -127,6 +127,7 @@ class NetworkGraph:
         self._total_weight: float | None = None
         self._score: float | None = None
         self._is_connected: bool | None = None
+        self._adjacency_dict: dict[int, list[tuple[int, float]]] | None = None
 
     def __repr__(self):
         return f"NetworkGraph(edges={self.edges})"
@@ -165,21 +166,30 @@ class NetworkGraph:
             self._is_connected = self._is_connected_bfs()
         return self._is_connected
 
-    def _build_adjacency_list(self) -> dict[list]:
-        ad_list = defaultdict(list)
-        for (id_a, id_b, _) in self.edges:
-            ad_list[id_a].append(id_b)
-            ad_list[id_b].append(id_a)
-        return ad_list
+    @property
+    def adjacency_dict(self) -> dict[int, list[tuple[int, float]]]:
+        """Graph adjacency list, but in dictionary format"""
+        if self._adjacency_dict is not None:
+            return self._adjacency_dict
+        ad_dict = {}
+        for (id_a, id_b, weight) in self.edges:
+            for node_id in [id_a, id_b]:
+                if node_id not in ad_dict:
+                    ad_dict[node_id] = []
+            ad_dict[id_a].append((id_b, weight))
+            ad_dict[id_b].append((id_a, weight))
+
+        self._adjacency_dict = ad_dict
+        return self._adjacency_dict
 
     def _is_connected_bfs(self) -> bool:
-        """Check connectiviness by performing BFS
+        """Check connectiviness by performing breadth-first-search
 
         Returns:
             bool: True if all nodes are reached
         """
-        graph = self._build_adjacency_list()
-        root = graph[next(iter(graph))][0]
+        graph = self.adjacency_dict
+        root = next(iter(graph))
 
         visited = {root}
         queue = deque([root])
@@ -187,7 +197,7 @@ class NetworkGraph:
         while queue:
             source = queue.popleft()
 
-            for i in graph[source]:
+            for i, _ in graph[source]:
                 if i not in visited:
                     queue.append(i)
                     visited.add(i)
@@ -202,9 +212,47 @@ class NetworkGraph:
         return self._total_weight
 
     def _avg_distance(self) -> float:
-        """Average distance of each point to every other point"""
-        graph = nx.Graph()
-        graph.add_weighted_edges_from(self.edges)
-        return nx.average_shortest_path_length(
-            graph, weight="weight", method="floyd-warshall-numpy"
-        )
+        """Average distance of each point to every other point
+
+        Heavily borrowed from networkx floyd_warshall_numpy
+        """
+        mat = self._to_numpy_adjacency_matrix(not_edge=np.inf)
+        np.fill_diagonal(mat, 0)
+        node_count, _ = mat.shape
+
+        for i in range(node_count):
+            mat = np.minimum(mat, mat[i, :][np.newaxis, :] + mat[:, i][:, np.newaxis])
+
+        return mat.sum() / (node_count * (node_count - 1))
+
+    def _to_numpy_adjacency_matrix(self, not_edge=0.0) -> np.ndarray:
+        """Create adjacency matrix as numpy array
+
+        Make a denser matrix, by ignoring actual edge indices and
+        replacing them with running index.
+
+        Args:
+            not_edge (float, optional): Value that is assigned to
+              non-edges. Defaults to 0.0.
+
+        Returns:
+            np.ndarray: adjacency matrix representation
+        """
+        graph = self.adjacency_dict
+        node_count = len(graph)
+        if node_count == 0:
+            return np.empty((0, 0))
+
+        idx = dict(zip(graph.keys(), range(node_count)))
+        i, j, wts = [], [], []
+
+        for id_a, to_list in self.adjacency_dict.items():
+            for id_b, weight in to_list:
+                i.append(idx[id_a])
+                j.append(idx[id_b])
+                wts.append(weight)
+
+        adj = np.full((node_count, node_count), fill_value=not_edge)
+        adj[i, j] = wts
+
+        return adj

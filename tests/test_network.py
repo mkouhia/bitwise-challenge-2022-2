@@ -1,8 +1,5 @@
 """Test network graphs"""
 
-from io import StringIO
-
-import networkx as nx
 import pytest
 
 from bitwise_challenge_2022_2.network import BaseNetwork, NetworkGraph
