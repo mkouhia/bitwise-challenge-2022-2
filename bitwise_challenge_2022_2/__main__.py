@@ -26,12 +26,16 @@ def main(argv: list[str] = None):
     else:
         pool = None
 
+    termination = {}
+    if parsed_args.max_gen is not None:
+        termination["n_max_gen"] = parsed_args.max_gen
+
     try:
         network_json = Path(__file__).parent / "koodipahkina-data.json"
         res = optimize(
             network_json,
             pool=pool,
-            termination={"n_max_gen": parsed_args.max_gen},
+            termination=termination,
             seed=1,
             verbose=not parsed_args.quiet,
             x_path=parsed_args.xpath,
@@ -76,9 +80,9 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="""Optimize liana network.""")
     parser.add_argument(
         "--max-gen",
-        default=75,
+        default=None,
         type=int,
-        help="Maximum number of generations for genetic algorithm. Default: 75",
+        help="Maximum number of generations for genetic algorithm. Default: None",
     )
     parser.add_argument(
         "--metric-log",
