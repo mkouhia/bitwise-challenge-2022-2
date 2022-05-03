@@ -7,7 +7,6 @@ import shutil
 import time
 import numpy as np
 
-import numpy as np
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem, starmap_parallelized_eval
@@ -15,7 +14,6 @@ from pymoo.core.callback import Callback
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem
 from pymoo.core.result import Result
-from pymoo.operators.sampling.rnd import FloatRandomSampling
 from pymoo.optimize import minimize
 from pymoo.util.display import SingleObjectiveDisplay
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
@@ -97,29 +95,45 @@ class MyCallback(Callback):
         self,
         x_path: os.PathLike | None = None,
         metric_log: os.PathLike | None = None,
+        resume: bool = False,
     ) -> None:
         super().__init__()
 
         self.x_path = Path(x_path)
         self.metric_log = Path(metric_log)
 
-        for key in ["n_gen", "time", "fopt"]:
+        for key in ["n_gen", "time", "fopt", "eval_per_s"]:
             self.data[key] = []
-        self._init_log()
+        self._n_gen_offset = 0
+        self._init_log(resume=resume)
+        self._prev_time = time.time()
 
-    def _init_log(self):
-        if self.metric_log.exists():
+    def _init_log(self, resume=False):
+        if not resume and self.metric_log.exists():
             self.metric_log.unlink()
-        else:
-            self.metric_log.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(self.metric_log, "w", encoding="utf8") as metric_file:
-            metric_file.write(",".join(self.data.keys()) + "\n")
+        if not self.metric_log.exists:
+            self.metric_log.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.metric_log, "w", encoding="utf8") as metric_file:
+                metric_file.write(",".join(self.data.keys()) + "\n")
+        elif resume:
+            with open(self.metric_log, "r", encoding="utf-8") as metric_file:
+                for line in metric_file:
+                    pass  # skip to last line
+                try:
+                    self._n_gen_offset = int(line.split(",")[0])
+                except (IndexError, ValueError):
+                    pass
 
     def notify(self, algorithm, **kwargs):
-        self.data["n_gen"].append(algorithm.n_gen)
+        time_now = time.time()
+
+        self.data["n_gen"].append(algorithm.n_gen + self._n_gen_offset)
         self.data["time"].append(time.time())
         self.data["fopt"].append(algorithm.pop.get("F").min())
+        self.data["eval_per_s"].append(
+            algorithm.pop.size / (time_now - self._prev_time)
+        )
 
         if self.x_path is not None:
             self._write_x_file(algorithm.pop.get("X"))
@@ -128,6 +142,8 @@ class MyCallback(Callback):
             with open(self.metric_log, "a", encoding="utf8") as metric_file:
                 line_vals = (str(self.data[key][-1]) for key in self.data)
                 metric_file.write(",".join(line_vals) + "\n")
+
+        self._prev_time = time_now
 
     def _write_x_file(self, x_array):
         """Write x array to file, using temporary .bak file"""
@@ -193,7 +209,7 @@ def optimize(
         bias=0.7,
         eliminate_duplicates=MyElementwiseDuplicateElimination(),
         sampling=sampling,
-        callback=MyCallback(x_path=x_path, metric_log=metric_log),
+        callback=MyCallback(x_path=x_path, metric_log=metric_log, resume=resume),
         display=MyDisplay(),
     )
 
