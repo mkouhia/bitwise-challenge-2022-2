@@ -15,7 +15,7 @@ def simple_graph_fx() -> NetworkGraph:
         (0, 1, 1),
         (1, 2, 2),
         (1, 3, 4),
-        (3, 0, 8),
+        (0, 3, 8),
     ]
     return NetworkGraph(edges)
 
@@ -36,24 +36,14 @@ def test_base_from_json(mocker):
     assert net.edges == {0: (0, 1), 1: (1, 2), 2: (1, 3), 3: (0, 3)}
 
 
-def test_base_as_graph():
+def test_base_as_graph(simple_graph: NetworkGraph):
     """Base network is converted to NetworkGraph"""
-    ...
+    nodes = {0: (1, 2), 1: (2, 3), 2: (3, 4), 3: (3, 5)}
+    edges = {0: (0, 1), 1: (1, 2), 2: (1, 3), 3: (0, 3)}
+    weights = {0: 1, 1: 2, 2: 4, 3: 8}
+    net = BaseNetwork(nodes, edges, weights)
 
-
-def test_copy(simple_graph: NetworkGraph):
-    """A new graph is returned, with same graph and total weight"""
-    another = simple_graph.copy()
-
-    assert another.edges == simple_graph.edges
-    assert another.edges is not simple_graph.edges
-
-
-def test_remove_edge(simple_graph: NetworkGraph):
-    """Edge is removed from underlying graph"""
-    simple_graph.remove_edge(0, 1)
-
-    assert (0, 1) not in [(i, j) for (i, j, _) in simple_graph.edges]
+    assert net.as_graph().edges == simple_graph.edges
 
 
 def test_evaluate(simple_graph: NetworkGraph):

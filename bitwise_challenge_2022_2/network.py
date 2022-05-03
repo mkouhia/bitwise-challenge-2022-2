@@ -6,7 +6,7 @@ import locale
 import math
 import os
 import sys
-from typing import Any
+from typing import Any, Iterable
 
 import networkx as nx
 
@@ -31,7 +31,7 @@ class BaseNetwork:
         self.edges = edges
         self._weights = weights
 
-        self._network: "NetworkGraph" | None = None
+        self._base_score: float | None = None
 
     @classmethod
     def from_json(
@@ -64,53 +64,54 @@ class BaseNetwork:
 
         return BaseNetwork(nodes, edges)
 
-    def as_graph(self, remove_edges: list[int] | None = None) -> "NetworkGraph":
+    def as_graph(self, remove_edges: Iterable[int] | None = None) -> "NetworkGraph":
         """Create copy of the network
 
         Args:
-            remove_edges (list[int] | None): list of edge ids to be removed
+            remove_edges (Iterable[int] | None): edge ids to be removed
 
         Returns:
             NetworkGraph: Graph representation of the network, possibly
               without specified edges.
         """
-        if self._network is None:
-            self._network = NetworkGraph(self.weights)
+        edge_list = [
+            (id_a, id_b, self.weights[edge_id])
+            for edge_id, (id_a, id_b) in self.edges.items()
+            if remove_edges is None or edge_id not in remove_edges
+        ]
 
-        if remove_edges is None or len(remove_edges) == 0:
-            return self._network
-
-        new_network = self._network.copy()
-
-        for edge_id in remove_edges:
-            id_a, id_b = self.edges[edge_id]
-            new_network.remove_edge(id_a, id_b)
-
-        return new_network
+        return NetworkGraph(edge_list)
 
     @property
     def weights(self):
-        """Edge weights, list of (node_from, node_to, weight)"""
+        """Edge weights, edge_id: weight"""
         if self._weights is not None:
             return self._weights
 
-        edge_list = []
-        for (id_a, id_b) in self.edges.values():
+        weigths = {}
+        for edge_id, (id_a, id_b) in self.edges.items():
             x_a, y_a = self.nodes[id_a]
             x_b, y_b = self.nodes[id_b]
 
             weight = math.sqrt((x_a - x_b) ** 2 + (y_a - y_b) ** 2)
 
-            edge_list.append((id_a, id_b, weight))
+            weigths[edge_id] = weight
 
-        self._weights = edge_list
+        self._weights = weigths
         return self._weights
+
+    @property
+    def base_score(self):
+        """Base score for the network"""
+        if self._base_score is None:
+            net = self.as_graph()
+            self._base_score = net.evaluate()
+        return self._base_score
 
     def comparison_score(self, other: "NetworkGraph") -> float:
         """Compare other network to base network, return score"""
-        p_this = self.as_graph().evaluate()
         p_other = other.evaluate()
-        return (p_this / p_other - 1) * 1000
+        return (self.base_score / p_other - 1) * 1000
 
 
 class NetworkGraph:
@@ -129,30 +130,6 @@ class NetworkGraph:
 
     def __repr__(self):
         return f"NetworkGraph(edges={self.edges})"
-
-    def copy(self) -> "NetworkGraph":
-        """Create a copy of underlying graph, set total weight"""
-        new_network = NetworkGraph(self.edges.copy())
-
-        # pylint: disable=protected-access
-        new_network._total_weight = self.total_weight
-
-        return new_network
-
-    def remove_edge(self, id_a: int, id_b: int):
-        """Remove edge from underlying graph
-
-        Args:
-            id_a (int): start node id
-            id_b (int): end node id
-        """
-        edge = self.edges.pop(self._edge_index(id_a, id_b))
-
-        if self._total_weight is not None:
-            self._total_weight -= edge[-1]
-
-        self._score = None
-        self._is_connected = None
 
     def _edge_index(self, id_a: int, id_b: int) -> int:
         """Get index of edge in self.edges by start and end
