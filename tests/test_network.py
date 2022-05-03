@@ -17,9 +17,7 @@ def simple_graph_fx() -> NetworkGraph:
         (1, 3, 4),
         (3, 0, 8),
     ]
-    graph = nx.Graph()
-    graph.add_weighted_edges_from(edges)
-    return NetworkGraph(graph)
+    return NetworkGraph(edges)
 
 
 def test_base_from_json(mocker):
@@ -47,18 +45,15 @@ def test_copy(simple_graph: NetworkGraph):
     """A new graph is returned, with same graph and total weight"""
     another = simple_graph.copy()
 
-    # pylint: disable=protected-access
-    assert list(another._graph.edges.data()) == list(simple_graph._graph.edges.data())
-    assert another._graph is not simple_graph._graph
-    assert another._total_weight == simple_graph._total_weight
+    assert another.edges == simple_graph.edges
+    assert another.edges is not simple_graph.edges
 
 
 def test_remove_edge(simple_graph: NetworkGraph):
     """Edge is removed from underlying graph"""
     simple_graph.remove_edge(0, 1)
 
-    # pylint: disable=protected-access
-    assert not simple_graph._graph.has_edge(0, 1)
+    assert (0, 1) not in [(i, j) for (i, j, _) in simple_graph.edges]
 
 
 def test_evaluate(simple_graph: NetworkGraph):

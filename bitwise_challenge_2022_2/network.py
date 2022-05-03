@@ -17,13 +17,18 @@ class BaseNetwork:
     Attributes:
         nodes: dictionary of node id to (x, y) coordinates
         edges: dictionary of edge id to tuple(point id, another point id)
+        weights: list of tuples (node_from, node_to, weight)
     """
 
     def __init__(
-        self, nodes: dict[int, tuple[int, int]], edges: dict[int, tuple[int, int]]
+        self,
+        nodes: dict[int, tuple[int, int]],
+        edges: dict[int, tuple[int, int]],
+        weights: Any | None = None,
     ):
         self.nodes = nodes
         self.edges = edges
+        self._weights = weights
 
         self._network: "NetworkGraph" | None = None
 
@@ -69,7 +74,7 @@ class BaseNetwork:
               without specified edges.
         """
         if self._network is None:
-            self._network = NetworkGraph(self._init_graph())
+            self._network = NetworkGraph(self.weights)
 
         if remove_edges is None or len(remove_edges) == 0:
             return self._network
@@ -82,9 +87,11 @@ class BaseNetwork:
 
         return new_network
 
-    def _init_graph(self) -> nx.Graph:
-        """Initialize internal graph representation"""
-        graph = nx.Graph()
+    @property
+    def weights(self):
+        """Edge weights, list of (node_from, node_to, weight)"""
+        if self._weights is not None:
+            return self._weights
 
         edge_list = []
         for (id_a, id_b) in self.edges.values():
@@ -95,9 +102,8 @@ class BaseNetwork:
 
             edge_list.append((id_a, id_b, weight))
 
-        graph.add_weighted_edges_from(edge_list)
-
-        return graph
+        self._weights = edge_list
+        return self._weights
 
     def comparison_score(self, other: "NetworkGraph") -> float:
         """Compare other network to base network, return score"""
@@ -108,40 +114,62 @@ class BaseNetwork:
 
 class NetworkGraph:
 
-    """Modified network graph"""
+    """Modified network graph
+    
+    Attributes:
+        edges (list[tuple[int, int, float]]): list of (id_from, id_to, weight)
+    """
 
-    def __init__(self, graph: nx.Graph):
-        self._graph = graph
+    def __init__(self, edges: list[tuple[int, int, float]]):
+        self.edges = edges
         self._total_weight: float | None = None
         self._score: float | None = None
         self._is_connected: bool | None = None
 
     def __repr__(self):
-        return f"NetworkGraph(graph={repr(self._graph)})"
+        return f"NetworkGraph(edges={self.edges})"
 
     def copy(self) -> "NetworkGraph":
         """Create a copy of underlying graph, set total weight"""
-        new_network = NetworkGraph(self._graph.copy())
+        new_network = NetworkGraph(self.edges.copy())
 
         # pylint: disable=protected-access
         new_network._total_weight = self.total_weight
 
         return new_network
 
-    def remove_edge(self, id_a: Any, id_b: Any):
+    def remove_edge(self, id_a: int, id_b: int):
         """Remove edge from underlying graph
 
         Args:
-            id_a (Any): start node id
-            id_b (Any): end node id
+            id_a (int): start node id
+            id_b (int): end node id
         """
-        edge_weight = self._graph.edges[id_a, id_b]["weight"]
+        edge = self.edges.pop(self._edge_index(id_a, id_b))
 
-        self._graph.remove_edge(id_a, id_b)
         if self._total_weight is not None:
-            self._total_weight -= edge_weight
+            self._total_weight -= edge[-1]
+
         self._score = None
         self._is_connected = None
+        
+    def _edge_index(self, id_a: int, id_b: int) -> int:
+        """Get index of edge in self.edges by start and end
+
+        Args:
+            id_a (int): start node id
+            id_b (int): end node id
+
+        Raises:
+            ValueError: if edge is not found
+
+        Returns:
+            int: index in self.edge
+        """
+        for i, item in enumerate(self.edges):
+            if item[:2] == (id_a, id_b):
+                return i
+        raise ValueError(f"Edge {id_a}, {id_b} not found in edges")
 
     def evaluate(self, A=0.1, B=2.1) -> float:  # pylint: disable=invalid-name
         """Evaluate solution fitness"""
@@ -156,18 +184,22 @@ class NetworkGraph:
     def is_connected(self):
         """Underlying graph is connected"""
         if self._is_connected is None:
-            self._is_connected = nx.is_connected(self._graph)
+            graph = nx.Graph()
+            graph.add_weighted_edges_from(self.edges)
+            self._is_connected = nx.is_connected(graph)
         return self._is_connected
 
     @property
     def total_weight(self) -> float:
         """Total weight of all edges in the graph"""
         if self._total_weight is None:
-            self._total_weight = sum(k for _, _, k in self._graph.edges.data("weight"))
+            self._total_weight = sum(k for _, _, k in self.edges)
         return self._total_weight
 
     def _avg_distance(self) -> float:
         """Average distance of each point to every other point"""
+        graph = nx.Graph()
+        graph.add_weighted_edges_from(self.edges)
         return nx.average_shortest_path_length(
-            self._graph, weight="weight", method="floyd-warshall-numpy"
+            graph, weight="weight", method="floyd-warshall-numpy"
         )
