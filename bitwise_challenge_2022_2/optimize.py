@@ -28,8 +28,7 @@ class MyProblem(ElementwiseProblem):
     """Network optimization problem"""
 
     def __init__(self, network_json: os.PathLike, **kwargs):
-        network_json = BaseNetwork.from_json(network_json)
-        self.base_network = network_json
+        self.base_network = BaseNetwork.from_json(network_json)
 
         super().__init__(
             n_var=len(self.base_network.edges),
@@ -132,10 +131,15 @@ class MyCallback(Callback):
 
     def _write_x_file(self, x_array):
         """Write x array to file, using temporary .bak file"""
-        bak_path = self.x_path.parent / (self.x_path.name + ".bak")
-        shutil.copy(self.x_path, bak_path)
+        handle_bak = self.x_path.exists()
+        if handle_bak:
+            bak_path = self.x_path.parent / (self.x_path.name + ".bak")
+            shutil.copy(self.x_path, bak_path)
+
         np.save(self.x_path, x_array)
-        os.unlink(bak_path)
+
+        if handle_bak:
+            os.unlink(bak_path)
 
 
 def optimize(
@@ -175,9 +179,12 @@ def optimize(
             network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
         )
 
-    sampling = np.load(x_path) if resume else FloatRandomSampling()
-
     population_size = 2 * problem.n_var
+    sampling = (
+        np.load(x_path)
+        if resume
+        else np.random.beta(4, 2, (population_size, problem.n_var))
+    )
 
     algorithm = BRKGA(
         n_elites=int(population_size * 0.2),
