@@ -179,9 +179,12 @@ def optimize(
             network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
         )
 
-    sampling = np.load(x_path) if resume else FloatRandomSampling()
-
     population_size = 2 * problem.n_var
+    sampling = (
+        np.load(x_path)
+        if resume
+        else np.random.beta(4, 2, (population_size, problem.n_var))
+    )
 
     algorithm = BRKGA(
         n_elites=int(population_size * 0.2),
