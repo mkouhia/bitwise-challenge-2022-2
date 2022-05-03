@@ -28,8 +28,7 @@ class MyProblem(ElementwiseProblem):
     """Network optimization problem"""
 
     def __init__(self, network_json: os.PathLike, **kwargs):
-        network_json = BaseNetwork.from_json(network_json)
-        self.base_network = network_json
+        self.base_network = BaseNetwork.from_json(network_json)
 
         super().__init__(
             n_var=len(self.base_network.edges),
