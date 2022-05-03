@@ -56,6 +56,18 @@ def test_is_connected(simple_graph: NetworkGraph):
     assert simple_graph.is_connected
 
 
+def test_is_not_connected():
+    """Unconnected graph"""
+    edges = [
+        (0, 1, 1),
+        (1, 2, 2),
+        (3, 4, 4),
+        (4, 5, 8),
+    ]
+    graph = NetworkGraph(edges)
+    assert not graph.is_connected
+
+
 def test_total_weight(simple_graph: NetworkGraph):
     """Total weight is the sum of all weights"""
     assert simple_graph.total_weight == 15
