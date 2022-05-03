@@ -52,6 +52,8 @@ class BaseNetwork:
 
             for edge_s, to_id in j_struct[point_s]["edges"].items():
                 edge_id = int(edge_s)
+                if edge_id in edges:
+                    continue
                 edges[edge_id] = (point_id, to_id)
 
         return BaseNetwork(nodes, edges)

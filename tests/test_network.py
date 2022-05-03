@@ -1,9 +1,11 @@
 """Test network graphs"""
 
+from io import StringIO
+
 import networkx as nx
 import pytest
 
-from bitwise_challenge_2022_2.network import NetworkGraph
+from bitwise_challenge_2022_2.network import BaseNetwork, NetworkGraph
 
 
 @pytest.fixture(name="simple_graph")
@@ -18,6 +20,27 @@ def simple_graph_fx() -> NetworkGraph:
     graph = nx.Graph()
     graph.add_weighted_edges_from(edges)
     return NetworkGraph(graph)
+
+
+def test_base_from_json(mocker):
+    """Test json reading"""
+    test_json = """{
+    "points": {
+        "0": {"x": 1, "y": 2, "edges": {"0": 1, "3": 3}},
+        "1": {"x": 2, "y": 3, "edges": {"0": 0, "1": 2, "2": 3}},
+        "2": {"x": 3, "y": 4, "edges": {"1": 1}},
+        "3": {"x": 3, "y": 5, "edges": {"2": 3, "3": 0}}
+    }}"""
+    mocker.patch("builtins.open", mocker.mock_open(read_data=test_json))
+
+    net = BaseNetwork.from_json(test_json)
+    assert net.nodes == {0: (1, 2), 1: (2, 3), 2: (3, 4), 3: (3, 5)}
+    assert net.edges == {0: (0, 1), 1: (1, 2), 2: (1, 3), 3: (0, 3)}
+
+
+def test_base_as_graph():
+    """Base network is converted to NetworkGraph"""
+    ...
 
 
 def test_copy(simple_graph: NetworkGraph):
