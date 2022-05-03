@@ -276,6 +276,7 @@ description = "Multi-Objective Optimization in Python"
 category = "main"
 optional = false
 python-versions = ">=3.6"
+develop = false
 
 [package.dependencies]
 autograd = ">=1.3"
@@ -283,6 +284,12 @@ cma = "2.7"
 matplotlib = ">=3"
 numpy = ">=1.15"
 scipy = ">=1.1"
+
+[package.source]
+type = "git"
+url = "https://github.com/mkouhia/pymoo.git"
+reference = "master-fixed"
+resolved_reference = "169f075e0ecee1a9ee0db9fb22e9ae2fde6f47c9"
 
 [[package]]
 name = "pyparsing"
@@ -425,7 +432,7 @@ plots = ["plotext"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.10,<3.11"
-content-hash = "719e84b3afc7c6ef2ef4842e1666478af4db88815af590f45d42a400c272533b"
+content-hash = "7ba4f4f509ca074dc37904fa722d2340b73512e935ca3ba5e4cb29e6f639e5be"
 
 [metadata.files]
 astroid = [
@@ -687,18 +694,7 @@ pylint = [
     {file = "pylint-2.13.8-py3-none-any.whl", hash = "sha256:f87e863a0b08f64b5230e7e779bcb75276346995737b2c0dc2793070487b1ff6"},
     {file = "pylint-2.13.8.tar.gz", hash = "sha256:ced8968c3b699df0615e2a709554dec3ddac2f5cd06efadb69554a69eeca364a"},
 ]
-pymoo = [
-    {file = "pymoo-0.5.0-cp37-cp37m-macosx_10_14_x86_64.whl", hash = "sha256:d4e2f75d8ecbf6ed423fe80511f814a3a187a2d065c4a3daae6d805f2b767cb4"},
-    {file = "pymoo-0.5.0-cp37-cp37m-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:ea92ca6eee046bc1c805ee06aa4fe1fc34d1e762967c7ccf18ed83cd9663b466"},
-    {file = "pymoo-0.5.0-cp37-cp37m-win_amd64.whl", hash = "sha256:75a6b3596da3aca6162648e0694dbcb84666ce94b573ebd1e6da079dacae6e88"},
-    {file = "pymoo-0.5.0-cp38-cp38-macosx_10_14_x86_64.whl", hash = "sha256:9aa74dceb8b96132d518eae6871dd99f9dc9bb38be27f0ae04d61c46add11502"},
-    {file = "pymoo-0.5.0-cp38-cp38-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:54c0136662a679b02c021d8d0da5bf6466811753c13dd07dc92cb42907deb10b"},
-    {file = "pymoo-0.5.0-cp38-cp38-win_amd64.whl", hash = "sha256:21b2cf66034c7a0f300125699df5632632b36df5626e6d875249870b2dd3bf77"},
-    {file = "pymoo-0.5.0-cp39-cp39-macosx_10_14_x86_64.whl", hash = "sha256:6bba6a2d6368d933bc67cc5107243ff96d0d4cc9b1a671b89c06d71240d3e77e"},
-    {file = "pymoo-0.5.0-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:3f4c432283a69b5db80e08c35f16557e0b4f9a0f89506b6acedd7e169cffaef3"},
-    {file = "pymoo-0.5.0-cp39-cp39-win_amd64.whl", hash = "sha256:07a2af789ea705698af8f3bda75559adab38619d8144951ffe57f720049156c4"},
-    {file = "pymoo-0.5.0.tar.gz", hash = "sha256:2fbca1716f6b45e430197ce4ce2210070fd3b6b9ec6b17bb25d98486115272c2"},
-]
+pymoo = []
 pyparsing = [
     {file = "pyparsing-3.0.8-py3-none-any.whl", hash = "sha256:ef7b523f6356f763771559412c0d7134753f037822dad1b16945b7b846f7ad06"},
     {file = "pyparsing-3.0.8.tar.gz", hash = "sha256:7bf433498c016c4314268d95df76c81b842a4cb2b276fa3312cfb1e1d85f6954"},

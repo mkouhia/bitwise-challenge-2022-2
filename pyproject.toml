@@ -7,7 +7,7 @@ authors = ["Mikko Kouhia <mikko.kouhia@iki.fi>"]
 [tool.poetry.dependencies]
 python = ">=3.10,<3.11"
 numpy = "^1.22.3"
-pymoo = "^0.5.0"
+pymoo = { git = "https://github.com/mkouhia/pymoo.git", branch = "master-fixed" }
 plotext = {version = "^5.0.2", optional = true}
 
 [tool.poetry.dev-dependencies]
