@@ -201,6 +201,7 @@ def optimize(
             network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
         )
 
+    np.random.seed(47)
     population_size = 2 * problem.n_var
     sampling = (
         np.load(x_path)
