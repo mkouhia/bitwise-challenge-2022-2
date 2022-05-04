@@ -35,7 +35,7 @@ def simple_graph_fx() -> NetworkGraph:
         (1, 3, 4),
         (0, 3, 8),
     ]
-    return NetworkGraph(edges, [0, 1, 2, 3])
+    return NetworkGraph(edges, 4)
 
 
 def test_base_from_json(mocker, base_network):
@@ -62,8 +62,8 @@ def test_base_as_graph(base_network: BaseNetwork, simple_graph: NetworkGraph):
 def test_base_as_graph_del(base_network: BaseNetwork):
     """Base network is converted to NetworkGraph"""
     net = base_network.as_graph(remove_edges=[0, 3])
-    expected = {0: [], 1: [(2, 2), (3, 4)], 2: [(1, 2)], 3: [(1, 4)]}
-    assert net.adjacency_dict == expected
+    expected = [[], [(2, 2), (3, 4)], [(1, 2)], [(1, 4)]]
+    assert net.adjacency_list == expected
     assert not net.is_connected
 
 
@@ -85,7 +85,7 @@ def test_is_not_connected():
         (3, 4, 4),
         (4, 5, 8),
     ]
-    graph = NetworkGraph(edges, [0, 1, 2, 3, 4, 5])
+    graph = NetworkGraph(edges, 6)
     assert not graph.is_connected
 
 
