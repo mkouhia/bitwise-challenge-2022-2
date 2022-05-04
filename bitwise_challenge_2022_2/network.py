@@ -81,7 +81,7 @@ class BaseNetwork:
             if remove_edges is None or edge_id not in remove_edges
         ]
 
-        return NetworkGraph(edge_list)
+        return NetworkGraph(edge_list, self.nodes.keys())
 
     @property
     def weights(self):
@@ -121,10 +121,12 @@ class NetworkGraph:
 
     Attributes:
         edges (list[tuple[int, int, float]]): list of (id_from, id_to, weight)
+        nodes (list[int]): node ids
     """
 
-    def __init__(self, edges: list[tuple[int, int, float]]):
+    def __init__(self, edges: list[tuple[int, int, float]], nodes: list[int]):
         self.edges = edges
+        self.nodes = nodes
         self._total_weight: float | None = None
         self._score: float | None = None
         self._is_connected: bool | None = None
@@ -172,11 +174,8 @@ class NetworkGraph:
         """Graph adjacency list, but in dictionary format"""
         if self._adjacency_dict is not None:
             return self._adjacency_dict
-        ad_dict = {}
+        ad_dict = {i: [] for i in self.nodes}
         for (id_a, id_b, weight) in self.edges:
-            for node_id in [id_a, id_b]:
-                if node_id not in ad_dict:
-                    ad_dict[node_id] = []
             ad_dict[id_a].append((id_b, weight))
             ad_dict[id_b].append((id_a, weight))
 

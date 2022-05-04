@@ -1,8 +1,29 @@
 """Test network graphs"""
 
+from pathlib import Path
 import pytest
 
 from bitwise_challenge_2022_2.network import BaseNetwork, NetworkGraph
+
+
+@pytest.fixture(name="base_network")
+def base_network_fx() -> BaseNetwork:
+    """Create base network for testing"""
+    nodes = {0: (1, 2), 1: (2, 3), 2: (3, 4), 3: (3, 5)}
+    edges = {0: (0, 1), 1: (1, 2), 2: (1, 3), 3: (0, 3)}
+    weights = {0: 1, 1: 2, 2: 4, 3: 8}
+    return BaseNetwork(nodes, edges, weights)
+
+
+@pytest.fixture(name="challenge_base")
+def challenge_base_fx() -> BaseNetwork:
+    """Actual challenge network"""
+    network_json = (
+        Path(__file__).parents[1]
+        / "bitwise_challenge_2022_2"
+        / "koodipahkina-data.json"
+    )
+    return BaseNetwork.from_json(network_json)
 
 
 @pytest.fixture(name="simple_graph")
@@ -14,10 +35,10 @@ def simple_graph_fx() -> NetworkGraph:
         (1, 3, 4),
         (0, 3, 8),
     ]
-    return NetworkGraph(edges)
+    return NetworkGraph(edges, [0, 1, 2, 3])
 
 
-def test_base_from_json(mocker):
+def test_base_from_json(mocker, base_network):
     """Test json reading"""
     test_json = """{
     "points": {
@@ -29,18 +50,21 @@ def test_base_from_json(mocker):
     mocker.patch("builtins.open", mocker.mock_open(read_data=test_json))
 
     net = BaseNetwork.from_json(test_json)
-    assert net.nodes == {0: (1, 2), 1: (2, 3), 2: (3, 4), 3: (3, 5)}
-    assert net.edges == {0: (0, 1), 1: (1, 2), 2: (1, 3), 3: (0, 3)}
+    assert net.nodes == base_network.nodes
+    assert net.edges == base_network.edges
 
 
-def test_base_as_graph(simple_graph: NetworkGraph):
+def test_base_as_graph(base_network: BaseNetwork, simple_graph: NetworkGraph):
     """Base network is converted to NetworkGraph"""
-    nodes = {0: (1, 2), 1: (2, 3), 2: (3, 4), 3: (3, 5)}
-    edges = {0: (0, 1), 1: (1, 2), 2: (1, 3), 3: (0, 3)}
-    weights = {0: 1, 1: 2, 2: 4, 3: 8}
-    net = BaseNetwork(nodes, edges, weights)
+    assert base_network.as_graph().edges == simple_graph.edges
 
-    assert net.as_graph().edges == simple_graph.edges
+
+def test_base_as_graph_del(base_network: BaseNetwork):
+    """Base network is converted to NetworkGraph"""
+    net = base_network.as_graph(remove_edges=[0, 3])
+    expected = {0: [], 1: [(2, 2), (3, 4)], 2: [(1, 2)], 3: [(1, 4)]}
+    assert net.adjacency_dict == expected
+    assert not net.is_connected
 
 
 def test_evaluate(simple_graph: NetworkGraph):
@@ -61,7 +85,7 @@ def test_is_not_connected():
         (3, 4, 4),
         (4, 5, 8),
     ]
-    graph = NetworkGraph(edges)
+    graph = NetworkGraph(edges, [0, 1, 2, 3, 4, 5])
     assert not graph.is_connected
 
 
