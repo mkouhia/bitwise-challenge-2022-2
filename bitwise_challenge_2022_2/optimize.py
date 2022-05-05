@@ -8,7 +8,6 @@ import numpy as np
 
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import DefaultDuplicateElimination
-from pymoo.core.individual import Individual
 from pymoo.core.population import Population
 from pymoo.core.problem import Problem
 from pymoo.core.callback import Callback
@@ -18,7 +17,7 @@ from pymoo.util.display import SingleObjectiveDisplay
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
 import numba
 
-from .network import BaseNetwork, evaluate_many, get_comparison_mat
+from .network import BaseNetwork, evaluate_many, create_comparison_hash
 
 
 class MyProblem(Problem):
@@ -47,7 +46,7 @@ class MyProblem(Problem):
         out["F"] = result[:, 0]
         out["G"] = result[:, 1]
         out["pheno"] = x_boolean
-        out["hash"] = get_comparison_mat(x_boolean)
+        out["hash"] = create_comparison_hash(x_boolean)
 
 
 class MyDuplicateElimination(DefaultDuplicateElimination):
@@ -65,18 +64,16 @@ class MyDuplicateElimination(DefaultDuplicateElimination):
     def _do_compare(
         arr_a: np.ndarray, arr_b: np.ndarray | None, is_duplicate: np.ndarray
     ):
-
+        # pylint: disable=not-an-iterable
         if arr_b is None:
-            for i in numba.prange(len(arr_a)):  # pylint: disable=not-an-iterable
-                for j in numba.prange(
-                    i + 1, len(arr_a)
-                ):  # pylint: disable=not-an-iterable
+            for i in numba.prange(len(arr_a)):
+                for j in numba.prange(i + 1, len(arr_a)):
                     if arr_a[i] == arr_b[j]:
                         is_duplicate[i] = True
                         break
         else:
-            for i in numba.prange(len(arr_a)):  # pylint: disable=not-an-iterable
-                for j in numba.prange(len(arr_b)):  # pylint: disable=not-an-iterable
+            for i in numba.prange(len(arr_a)):
+                for j in numba.prange(len(arr_b)):
                     if arr_a[i] == arr_b[j]:
                         is_duplicate[i] = True
                         break
@@ -111,7 +108,7 @@ class MyDisplay(SingleObjectiveDisplay):  # pylint: disable=too-few-public-metho
         self._prev_time = time_now
 
 
-class MyCallback(Callback):
+class MyCallback(Callback):  # pylint: disable=too-few-public-methods
 
     """Callback on each generation
 
@@ -257,7 +254,7 @@ def _get_n_gen_offset(metric_log: os.PathLike | None):
         return n_gen
 
     with open(metric_log, "r", encoding="utf-8") as metric_file:
-
+        line = ""
         for line in metric_file:
             pass  # skip to last line
         try:

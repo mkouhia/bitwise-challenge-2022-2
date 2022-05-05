@@ -10,7 +10,7 @@ import numpy as np
 import numba
 from numba import optional
 from numba.experimental import jitclass
-from numba.types import int8, float64, boolean
+from numba.types import float64, boolean
 
 
 class BaseNetwork:
@@ -285,29 +285,35 @@ def evaluate_many(
 
 
 @numba.njit(parallel=True)
-def get_comparison_mat(edge_options: np.ndarray):
+def create_comparison_hash(edge_options: np.ndarray):
+    """Create array containing hash values, used for comparison
+
+    Args:
+        edge_options (np.ndarray): Matrix of NxM, where N is number
+          of parallel options and M is the number of edges in the base
+          matrix. Values are True/False, depending on whether the edge
+          is removed or not.
+
+    Returns:
+        np.ndarray: Integer array of length N, containing hash values
+    """
     result = np.empty(len(edge_options))
     for i in numba.prange(len(edge_options)):  # pylint: disable=not-an-iterable
-        result[i] = base_2_to_10_array(edge_options[i].astype("int"))
+        result[i] = _base_2_to_10_array(edge_options[i].astype("int"))
     return result
 
 
 @numba.njit
-def split_chunks_fill(arr, size=8):
-    i0 = 0
-    i1 = size
-    while i1 <= len(arr):
-        yield arr[i0:i1]
-        i0 += size
-        i1 += size
-    yield arr[i0:]
-
-
-@numba.njit
-def base_2_to_10_array(arr):
+def _base_2_to_10_array(arr):
     """Convert base2 array to base-10
 
     This might overflow, but does not matter. It is used for hashing.
+
+    Args:
+        arr (np.ndarray): 1D array with 1's and 0's
+
+    Returns:
+        int: hash value
     """
     res = 0
     for bit in arr:

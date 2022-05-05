@@ -58,7 +58,8 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--metric-log",
         default="opt_log.txt",
-        help="Location for logging optimization running metrics. Default: opt_log.txt",
+        help="""Location for logging optimization running metrics.
+Default: opt_log.txt""",
     )
     parser.add_argument("--list", action="store_true", help="List available variables")
     parser.add_argument(
@@ -67,12 +68,14 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--y1",
         default="f_opt,f_avg",
-        help="Variables to be plotted on the left y-axis. Separated by comma. Default: f_opt,f_avg",
+        help="""Variables to be plotted on the left y-axis.
+Separated by comma. Default: f_opt,f_avg""",
     )
     parser.add_argument(
         "--y2",
         default="cv_avg,x_avg",
-        help="Variables to be plotted on the right y-axis. Separated by comma. Default: cv_avg,x_avg",
+        help="""Variables to be plotted on the right y-axis.
+Separated by comma. Default: cv_avg,x_avg""",
     )
     return parser.parse_args(args)
 
