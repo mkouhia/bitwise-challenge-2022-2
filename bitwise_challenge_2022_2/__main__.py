@@ -70,11 +70,11 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="""Optimize liana network.""")
     parser.add_argument(
         "--termination",
-        default=None,
+        default="n_max_evals:1000000",
         help="""Termination specification in format key1:value1,key2:value2.
             Available values: see keyword arguments at
             https://pymoo.org/interface/termination.html .
-            Default: None""",
+            Default: n_max_evals:1000000""",
     )
     parser.add_argument(
         "--metric-log",
