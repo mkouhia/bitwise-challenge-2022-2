@@ -240,7 +240,7 @@ def optimize(
         display=MyDisplay(n_gen_offset=n_gen_offset),
     )
 
-    termination = termination = SingleObjectiveDefaultTermination(**termination)
+    termination = SingleObjectiveDefaultTermination(**termination)
 
     res = minimize(problem, algorithm, termination, **kwargs)
 

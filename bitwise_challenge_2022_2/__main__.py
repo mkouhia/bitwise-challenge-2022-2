@@ -20,8 +20,10 @@ def main(argv: list[str] = None):
     parsed_args = _parse_args(argv)
 
     termination = {}
-    if parsed_args.max_gen is not None:
-        termination["n_max_gen"] = parsed_args.max_gen
+    if parsed_args.termination is not None:
+        for item in parsed_args.termination.split(","):
+            parts = item.split(":")
+            termination[parts[0]] = float(parts[1])
 
     try:
         network_json = Path(__file__).parent / "koodipahkina-data.json"
@@ -55,7 +57,9 @@ def _print_report(res: Result, base_net: BaseNetwork):
 
     score = base_net.comparison_score(new_net)
 
-    print(f"\nBest score: {score:.3f}")
+    print("\nBinary random key genetic algorithm")
+    print(f"{res.algorithm.n_gen} generations")
+    print(f"Best score: {score:.3f}")
     print(f"Execution time: {res.exec_time:.2f} s")
     print("Solution:")
     print(", ".join(del_edges.astype(str)))
@@ -65,10 +69,12 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     """Parse arguments from command line"""
     parser = argparse.ArgumentParser(description="""Optimize liana network.""")
     parser.add_argument(
-        "--max-gen",
+        "--termination",
         default=None,
-        type=int,
-        help="Maximum number of generations for genetic algorithm. Default: None",
+        help="""Termination specification in format key1:value1,key2:value2.
+            Available values: see keyword arguments at
+            https://pymoo.org/interface/termination.html .
+            Default: None""",
     )
     parser.add_argument(
         "--metric-log",
