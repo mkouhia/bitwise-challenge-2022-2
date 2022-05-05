@@ -10,7 +10,7 @@ import numpy as np
 import numba
 from numba import optional
 from numba.experimental import jitclass
-from numba.types import float64, boolean
+from numba.types import int8, float64, boolean
 
 
 class BaseNetwork:
@@ -93,6 +93,10 @@ class BaseNetwork:
             np.fill_diagonal(adj, 0)
 
         return adj
+
+    def get_edge_matrix(self) -> np.ndarray:
+        """Get edges as numpy array, Nx2, rows are to-from."""
+        return np.array([self.edges[i] for i in range(len(self.edges))])
 
     @property
     def weights(self):
@@ -240,3 +244,72 @@ def floyd_distance(matrix: np.ndarray, num_nodes: int) -> np.ndarray:
                 if matrix[i, j] > matrix[i, k] + matrix[k, j]:
                     matrix[i, j] = matrix[i, k] + matrix[k, j]
     return matrix
+
+
+@numba.njit(parallel=True)
+def evaluate_many(
+    base_matrix: np.ndarray,
+    edge_options: np.ndarray,
+    edges: np.ndarray,
+) -> np.ndarray:
+    """Evaluate multiple network options in parallel
+
+    Args:
+        base_matrix (np.ndarray): adjacency matrix for the base network
+        edge_options (np.ndarray): Matrix of NxM, where N is number
+          of parallel options and M is the number of edges in the base
+          matrix. Values are True/False, depending on whether the edge
+          is removed or not.
+        edges (np.ndarray): Matrix of Nx2, where rows represent edges
+          as (start node, end node).
+
+    Returns:
+        np.ndarray: Nx2 matrix, containing objective function values
+          in column 0 and constraint values in column 1.
+    """
+
+    result = np.empty((len(edge_options), 2))
+
+    for i in numba.prange(len(edge_options)):  # pylint: disable=not-an-iterable
+
+        row_x_binary = edge_options[i]
+        remove_edges = edges[~row_x_binary]
+
+        new_net = NetworkGraph(base_matrix)
+        new_net.remove_edges(remove_edges)
+
+        result[i, 0] = new_net.evaluate()
+        result[i, 1] = -1 if new_net.is_connected else 1
+
+    return result
+
+
+@numba.njit(parallel=True)
+def get_comparison_mat(edge_options: np.ndarray):
+    result = np.empty(len(edge_options))
+    for i in numba.prange(len(edge_options)):  # pylint: disable=not-an-iterable
+        result[i] = base_2_to_10_array(edge_options[i].astype("int"))
+    return result
+
+
+@numba.njit
+def split_chunks_fill(arr, size=8):
+    i0 = 0
+    i1 = size
+    while i1 <= len(arr):
+        yield arr[i0:i1]
+        i0 += size
+        i1 += size
+    yield arr[i0:]
+
+
+@numba.njit
+def base_2_to_10_array(arr):
+    """Convert base2 array to base-10
+
+    This might overflow, but does not matter. It is used for hashing.
+    """
+    res = 0
+    for bit in arr:
+        res = (res << 1) ^ bit
+    return res

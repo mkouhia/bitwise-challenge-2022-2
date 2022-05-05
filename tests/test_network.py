@@ -80,9 +80,20 @@ def test_base_to_adjacency_matrix(
     )
 
 
-def test_challenge_ids(challenge_base: BaseNetwork):
+def test_get_edge_matrix(base_network: BaseNetwork):
+    """Edges are ordered in matrix correctly"""
+    expected = np.array([(0, 1), (1, 2), (1, 3), (0, 3)])
+    assert_array_equal(base_network.get_edge_matrix(), expected)
+
+
+def test_challenge_edge_ids(challenge_base: BaseNetwork):
     """Challenge edge ids are from 0 to N-1"""
     assert challenge_base.edges.keys() == set(range(len(challenge_base.edges)))
+
+
+def test_challenge_node_ids(challenge_base: BaseNetwork):
+    """Challenge node ids are from 0 to N-1"""
+    assert challenge_base.nodes.keys() == set(range(len(challenge_base.nodes)))
 
 
 def test_remove_edges(simple_graph: NetworkGraph):

@@ -1,9 +1,7 @@
 """Command line interface"""
 
 import argparse
-import multiprocessing
 from pathlib import Path
-import signal
 import sys
 import numpy as np
 
@@ -21,12 +19,6 @@ def main(argv: list[str] = None):
     """
     parsed_args = _parse_args(argv)
 
-    if parsed_args.multiprocessing:
-        n_threads = multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(n_threads, _init_worker)
-    else:
-        pool = None
-
     termination = {}
     if parsed_args.max_gen is not None:
         termination["n_max_gen"] = parsed_args.max_gen
@@ -35,7 +27,6 @@ def main(argv: list[str] = None):
         network_json = Path(__file__).parent / "koodipahkina-data.json"
         res = optimize(
             network_json,
-            pool=pool,
             termination=termination,
             seed=1,
             verbose=not parsed_args.quiet,
@@ -50,18 +41,7 @@ def main(argv: list[str] = None):
 
     except KeyboardInterrupt:
         print("\nInterrupted, exiting")
-        if pool is not None:
-            pool.terminate()
-            pool.join()
         sys.exit(1)
-    else:
-        if pool is not None:
-            pool.close()
-            pool.join()
-
-
-def _init_worker():
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 def _print_report(res: Result, base_net: BaseNetwork):

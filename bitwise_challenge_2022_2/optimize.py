@@ -1,6 +1,5 @@
 """Optimization implementation"""
 
-from multiprocessing.pool import Pool
 import os
 from pathlib import Path
 import shutil
@@ -8,18 +7,21 @@ import time
 import numpy as np
 
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
-from pymoo.core.duplicate import ElementwiseDuplicateElimination
-from pymoo.core.problem import ElementwiseProblem, starmap_parallelized_eval
+from pymoo.core.duplicate import DefaultDuplicateElimination
+from pymoo.core.individual import Individual
+from pymoo.core.population import Population
+from pymoo.core.problem import Problem
 from pymoo.core.callback import Callback
 from pymoo.core.result import Result
 from pymoo.optimize import minimize
 from pymoo.util.display import SingleObjectiveDisplay
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
+import numba
 
-from .network import BaseNetwork, NetworkGraph
+from .network import BaseNetwork, evaluate_many, get_comparison_mat
 
 
-class MyProblem(ElementwiseProblem):
+class MyProblem(Problem):
 
     """Network optimization problem"""
 
@@ -36,32 +38,50 @@ class MyProblem(ElementwiseProblem):
         )
 
     def _evaluate(self, x, out, *args, **kwargs):
-        x_binary = np.round(x).astype(int)
-        del_edges = (x_binary == 0).nonzero()[0]
-
-        remove_edges = np.array(
-            [self.base_network.edges[i] for i in del_edges.tolist()]
-        )
-
         base_mat = self.base_network.to_adjacency_matrix()
-        new_net = NetworkGraph(base_mat)
-        new_net.remove_edges(remove_edges)
+        edges = self.base_network.get_edge_matrix()
+        x_boolean = np.round(x).astype(bool)
 
-        out["F"] = new_net.evaluate()
-        out["G"] = -1 if new_net.is_connected else 1
-        out["pheno"] = x_binary
-        out["hash"] = hash(del_edges.data.tobytes())
+        result = evaluate_many(base_mat, x_boolean, edges)
+
+        out["F"] = result[:, 0]
+        out["G"] = result[:, 1]
+        out["pheno"] = x_boolean
+        out["hash"] = get_comparison_mat(x_boolean)
 
 
-class MyElementwiseDuplicateElimination(ElementwiseDuplicateElimination):
+class MyDuplicateElimination(DefaultDuplicateElimination):
 
-    """Eliminate duplicates based on result hash"""
+    """Eliminate duplicates by comparing result hashes"""
 
-    def __init__(self, cmp_func=None, **kwargs) -> None:
-        super().__init__(self.is_equal, **kwargs)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
 
-    def is_equal(self, a, b):
-        return a.get("hash")[0] == b.get("hash")[0]
+    def _do(self, pop: Population, other: Population, is_duplicate: np.ndarray):
+        return self._do_compare(pop.get("hash"), other.get("hash"), is_duplicate)
+
+    @staticmethod
+    @numba.njit(parallel=True)
+    def _do_compare(
+        arr_a: np.ndarray, arr_b: np.ndarray | None, is_duplicate: np.ndarray
+    ):
+
+        if arr_b is None:
+            for i in numba.prange(len(arr_a)):  # pylint: disable=not-an-iterable
+                for j in numba.prange(
+                    i + 1, len(arr_a)
+                ):  # pylint: disable=not-an-iterable
+                    if arr_a[i] == arr_b[j]:
+                        is_duplicate[i] = True
+                        break
+        else:
+            for i in numba.prange(len(arr_a)):  # pylint: disable=not-an-iterable
+                for j in numba.prange(len(arr_b)):  # pylint: disable=not-an-iterable
+                    if arr_a[i] == arr_b[j]:
+                        is_duplicate[i] = True
+                        break
+
+        return is_duplicate
 
 
 class MyDisplay(SingleObjectiveDisplay):  # pylint: disable=too-few-public-methods
@@ -171,7 +191,6 @@ class MyCallback(Callback):
 
 def optimize(
     network_json: os.PathLike,
-    pool: Pool | None = None,
     termination: dict | None = None,
     x_path: os.PathLike | None = None,
     metric_log: os.PathLike | None = None,
@@ -182,8 +201,6 @@ def optimize(
 
     Args:
         network_json (os.PathLike): Location to network specification
-        pool (Pool | None): process pool for problem
-          evaluation. If pool is None, do not use multiprocessing.
         termination (dict | None, optional): Keyword arguments
           for termination criteria. See
           :func:`~pymoo.util.termination.default.SingleObjectiveDefaultTermination`.
@@ -199,12 +216,7 @@ def optimize(
     Returns:
         Result: pymoo optimization result
     """
-    if pool is None:
-        problem = MyProblem(network_json)
-    else:
-        problem = MyProblem(
-            network_json, runner=pool.starmap, func_eval=starmap_parallelized_eval
-        )
+    problem = MyProblem(network_json)
 
     np.random.seed(47)
     population_size = 2 * problem.n_var
@@ -220,7 +232,7 @@ def optimize(
         n_offsprings=int(population_size * 0.7),
         n_mutants=int(population_size * 0.1),
         bias=0.7,
-        eliminate_duplicates=MyElementwiseDuplicateElimination(),
+        eliminate_duplicates=MyDuplicateElimination(),
         sampling=sampling,
         callback=MyCallback(
             x_path=x_path,
