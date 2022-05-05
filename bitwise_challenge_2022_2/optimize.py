@@ -11,14 +11,12 @@ from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem, starmap_parallelized_eval
 from pymoo.core.callback import Callback
-from pymoo.core.duplicate import ElementwiseDuplicateElimination
-from pymoo.core.problem import ElementwiseProblem
 from pymoo.core.result import Result
 from pymoo.optimize import minimize
 from pymoo.util.display import SingleObjectiveDisplay
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
 
-from .network import BaseNetwork
+from .network import BaseNetwork, NetworkGraph
 
 
 class MyProblem(ElementwiseProblem):
@@ -41,7 +39,13 @@ class MyProblem(ElementwiseProblem):
         x_binary = np.round(x).astype(int)
         del_edges = (x_binary == 0).nonzero()[0]
 
-        new_net = self.base_network.as_graph(remove_edges=del_edges.tolist())
+        remove_edges = np.array(
+            [self.base_network.edges[i] for i in del_edges.tolist()]
+        )
+
+        base_mat = self.base_network.to_adjacency_matrix()
+        new_net = NetworkGraph(base_mat)
+        new_net.remove_edges(remove_edges)
 
         out["F"] = new_net.evaluate()
         out["G"] = -1 if new_net.is_connected else 1
@@ -127,6 +131,7 @@ class MyCallback(Callback):
         time_now = time.time()
 
         opt = algorithm.opt[0]
+        # pylint: disable=invalid-name
         F, CV, X, feasible = algorithm.pop.get("F", "CV", "pheno", "feasible")
         feasible = np.where(feasible[:, 0])[0]
 
@@ -146,7 +151,7 @@ class MyCallback(Callback):
 
         if self.metric_log is not None:
             with open(self.metric_log, "a", encoding="utf8") as metric_file:
-                line_vals = (str(self.data[key][-1]) for key in self.data)
+                line_vals = (str(val[-1]) for val in self.data.values())
                 metric_file.write(",".join(line_vals) + "\n")
 
         self._prev_time = time_now

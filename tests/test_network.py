@@ -1,7 +1,9 @@
 """Test network graphs"""
 
 from pathlib import Path
+import numpy as np
 import pytest
+from numpy.testing import assert_array_equal
 
 from bitwise_challenge_2022_2.network import BaseNetwork, NetworkGraph
 
@@ -26,6 +28,20 @@ def challenge_base_fx() -> BaseNetwork:
     return BaseNetwork.from_json(network_json)
 
 
+def edges_to_adjacency_matrix(
+    edges: list[tuple[int, int, float]], n_len: int
+) -> np.ndarray:
+    """Convert edge list to adjacency matrix"""
+    adj = np.full((n_len, n_len), np.inf, float)
+
+    for (id_a, id_b, weight) in edges:
+        adj[id_a, id_b] = weight
+        adj[id_b, id_a] = weight
+    np.fill_diagonal(adj, 0)
+
+    return adj
+
+
 @pytest.fixture(name="simple_graph")
 def simple_graph_fx() -> NetworkGraph:
     """Create simple graph for testing"""
@@ -35,7 +51,8 @@ def simple_graph_fx() -> NetworkGraph:
         (1, 3, 4),
         (0, 3, 8),
     ]
-    return NetworkGraph(edges, 4)
+    adj = edges_to_adjacency_matrix(edges, 4)
+    return NetworkGraph(adj)
 
 
 def test_base_from_json(mocker, base_network):
@@ -54,22 +71,39 @@ def test_base_from_json(mocker, base_network):
     assert net.edges == base_network.edges
 
 
-def test_base_as_graph(base_network: BaseNetwork, simple_graph: NetworkGraph):
+def test_base_to_adjacency_matrix(
+    base_network: BaseNetwork, simple_graph: NetworkGraph
+):
     """Base network is converted to NetworkGraph"""
-    assert base_network.as_graph().edges == simple_graph.edges
+    assert_array_equal(
+        base_network.to_adjacency_matrix(), simple_graph.adjacency_matrix
+    )
 
 
-def test_base_as_graph_del(base_network: BaseNetwork):
-    """Base network is converted to NetworkGraph"""
-    net = base_network.as_graph(remove_edges=[0, 3])
-    expected = [[], [(2, 2), (3, 4)], [(1, 2)], [(1, 4)]]
-    assert net.adjacency_list == expected
-    assert not net.is_connected
+def test_challenge_ids(challenge_base: BaseNetwork):
+    """Challenge edge ids are from 0 to N-1"""
+    assert challenge_base.edges.keys() == set(range(len(challenge_base.edges)))
+
+
+def test_remove_edges(simple_graph: NetworkGraph):
+    """Edges are removed"""
+    arr = np.array([[0, 1], [0, 3]])
+    simple_graph.remove_edges(arr)
+
+    expected = np.array(
+        [
+            [0.0, np.inf, np.inf, np.inf],
+            [np.inf, 0.0, 2.0, 4.0],
+            [np.inf, 2.0, 0.0, np.inf],
+            [np.inf, 4.0, np.inf, 0.0],
+        ]
+    )
+    assert_array_equal(simple_graph.adjacency_matrix, expected)
 
 
 def test_evaluate(simple_graph: NetworkGraph):
     """Evaluation score is as per guidelines"""
-    assert simple_graph.evaluate(A=0.1, B=3.0) == 12.0
+    assert simple_graph.evaluate(0.1, 3.0) == 12.0
 
 
 def test_is_connected(simple_graph: NetworkGraph):
@@ -85,7 +119,8 @@ def test_is_not_connected():
         (3, 4, 4),
         (4, 5, 8),
     ]
-    graph = NetworkGraph(edges, 6)
+    adj = edges_to_adjacency_matrix(edges, 6)
+    graph = NetworkGraph(adj)
     assert not graph.is_connected
 
 

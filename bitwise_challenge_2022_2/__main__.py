@@ -5,10 +5,11 @@ import multiprocessing
 from pathlib import Path
 import signal
 import sys
+import numpy as np
 
 from pymoo.core.result import Result
 
-from .network import BaseNetwork
+from .network import BaseNetwork, NetworkGraph
 from .optimize import optimize
 
 
@@ -64,15 +65,20 @@ def _init_worker():
 
 
 def _print_report(res: Result, base_net: BaseNetwork):
-    best_x_binary = res.opt.get("pheno")[0]
-    removed_edges = (best_x_binary == 0).nonzero()[0]
-    new_net = base_net.as_graph(remove_edges=removed_edges.tolist())
+    x_binary = res.opt.get("pheno")[0]
+    del_edges = (x_binary == 0).nonzero()[0]
+    remove_edges = np.array([base_net.edges[i] for i in del_edges.tolist()])
+
+    base_mat = base_net.to_adjacency_matrix()
+    new_net = NetworkGraph(base_mat)
+    new_net.remove_edges(remove_edges)
+
     score = base_net.comparison_score(new_net)
 
     print(f"\nBest score: {score:.3f}")
     print(f"Execution time: {res.exec_time:.2f} s")
     print("Solution:")
-    print(", ".join(removed_edges.astype(str)))
+    print(", ".join(del_edges.astype(str)))
 
 
 def _parse_args(args: list[str]) -> argparse.Namespace:

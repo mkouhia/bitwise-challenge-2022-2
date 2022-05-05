@@ -1,15 +1,16 @@
 """Network implementation"""
 
-from collections import deque
 import json
 import locale
 import math
 import os
-import sys
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 import numba
+from numba import optional
+from numba.experimental import jitclass
+from numba.types import float64, boolean
 
 
 class BaseNetwork:
@@ -65,29 +66,33 @@ class BaseNetwork:
 
         return BaseNetwork(nodes, edges)
 
-    def as_graph(self, remove_edges: Iterable[int] | None = None) -> "NetworkGraph":
+    def to_adjacency_matrix(self) -> np.ndarray:
         """Create copy of the network
 
         Rename nodes, so that in resulting network graph, all nodes are
         indexed from 0...(len(g)-1).
 
-        Args:
-            remove_edges (Iterable[int] | None): edge ids to be removed
-
         Returns:
-            NetworkGraph: Graph representation of the network, possibly
-              without specified edges.
+            np.ndarray: Two-dimensional matrix of floats, where
+              non-edges are represented with np.inf, and diagonal items
+              are zeros.
         """
-        node_list = self.nodes.keys()
-        n_len = len(node_list)
-        idx = dict(zip(node_list, range(n_len)))
-        edge_list = [
-            (idx[id_a], idx[id_b], self.weights[edge_id])
-            for edge_id, (id_a, id_b) in self.edges.items()
-            if remove_edges is None or edge_id not in remove_edges
-        ]
+        nodes = list(self.nodes.keys())
+        nodes.sort()
+        n_len = len(nodes)
 
-        return NetworkGraph(edge_list, n_len)
+        if n_len == 0:
+            adj = np.empty((0, 0), float)
+
+        else:
+            adj = np.full((n_len, n_len), np.inf, float)
+
+            for edge_id, (id_a, id_b) in self.edges.items():
+                adj[id_a, id_b] = self.weights[edge_id]
+                adj[id_b, id_a] = self.weights[edge_id]
+            np.fill_diagonal(adj, 0)
+
+        return adj
 
     @property
     def weights(self):
@@ -111,7 +116,8 @@ class BaseNetwork:
     def base_score(self):
         """Base score for the network"""
         if self._base_score is None:
-            net = self.as_graph()
+            mat = self.to_adjacency_matrix()
+            net = NetworkGraph(mat)
             self._base_score = net.evaluate()
         return self._base_score
 
@@ -121,6 +127,15 @@ class BaseNetwork:
         return (self.base_score / p_other - 1) * 1000
 
 
+spec = [
+    ("adjacency_matrix", float64[:, :]),
+    ("_total_weight", optional(float64)),
+    ("_score", optional(float64)),
+    ("_is_connected", optional(boolean)),
+]
+
+
+@jitclass(spec)
 class NetworkGraph:
 
     """Modified network graph
@@ -133,40 +148,31 @@ class NetworkGraph:
         n_nodes (int): number of nodes
     """
 
-    def __init__(self, edges: list[tuple[int, int, float]], n_nodes: int):
-        self.edges = edges
-        self.n_nodes = n_nodes
+    def __init__(self, adjacency_matrix: np.ndarray):
+        self.adjacency_matrix = adjacency_matrix.copy()
         self._total_weight: float | None = None
         self._score: float | None = None
         self._is_connected: bool | None = None
-        self._adjacency_list: list[list[tuple[int, float]]] | None = None
 
     def __repr__(self):
-        return f"NetworkGraph(edges={self.edges})"
+        return f"NetworkGraph(adjacency_matrix={self.adjacency_matrix})"
 
-    def _edge_index(self, id_a: int, id_b: int) -> int:
-        """Get index of edge in self.edges by start and end
+    def remove_edges(self, edges: np.ndarray):
+        """Remove edges from graph
 
         Args:
-            id_a (int): start node id
-            id_b (int): end node id
-
-        Raises:
-            ValueError: if edge is not found
-
-        Returns:
-            int: index in self.edge
+            edges (np.ndarray): Mx2 array of integers, where M is number
+              of removed edges. Each row is (id_from, id_to) pair.
         """
-        for i, item in enumerate(self.edges):
-            if item[:2] == (id_a, id_b):
-                return i
-        raise ValueError(f"Edge {id_a}, {id_b} not found in edges")
+        for row in range(len(edges)):
+            self.adjacency_matrix[edges[row, 0], edges[row, 1]] = np.inf
+            self.adjacency_matrix[edges[row, 1], edges[row, 0]] = np.inf
 
     def evaluate(self, A=0.1, B=2.1) -> float:  # pylint: disable=invalid-name
         """Evaluate solution fitness"""
         if self._score is None:
             if not self.is_connected:
-                self._score = sys.float_info.max
+                self._score = np.inf
             else:
                 self._score = A * self.total_weight + B * self._avg_distance()
         return self._score
@@ -178,102 +184,59 @@ class NetworkGraph:
             self._is_connected = self._is_connected_bfs()
         return self._is_connected
 
-    @property
-    def adjacency_list(self) -> list[tuple[int, float]]:
-        """Graph adjacency list"""
-        if self._adjacency_list is not None:
-            return self._adjacency_list
-        ad_list = [[] for _ in range(self.n_nodes)]
-        for (id_a, id_b, weight) in self.edges:
-            ad_list[id_a].append((id_b, weight))
-            ad_list[id_b].append((id_a, weight))
-
-        self._adjacency_list = ad_list
-        return self._adjacency_list
-
     def _is_connected_bfs(self) -> bool:
         """Check connectiviness by performing breadth-first-search
 
         Returns:
             bool: True if all nodes are reached
         """
-        graph = self.adjacency_list
         root = 0
 
         visited = {root}
-        queue = deque([root])
+        queue = [root]
 
         while queue:
-            source = queue.popleft()
+            source = queue.pop(0)
 
-            for i, _ in graph[source]:
+            for i in range(len(self.adjacency_matrix)):
+                value = self.adjacency_matrix[source, i]
+                if value == 0 or value == np.inf:  # pylint: disable=consider-using-in
+                    continue
                 if i not in visited:
                     queue.append(i)
                     visited.add(i)
 
-        return len(visited) == len(graph)
+        return len(visited) == len(self.adjacency_matrix)
 
     @property
     def total_weight(self) -> float:
         """Total weight of all edges in the graph"""
         if self._total_weight is None:
-            self._total_weight = sum(k for _, _, k in self.edges)
+            self._total_weight = 0.0
+            for i in range(len(self.adjacency_matrix)):
+                for j in range(len(self.adjacency_matrix)):
+                    if self.adjacency_matrix[i, j] != np.inf:
+                        self._total_weight = (
+                            self._total_weight + self.adjacency_matrix[i, j]
+                        )
+            self._total_weight = self._total_weight / 2
         return self._total_weight
 
     def _avg_distance(self) -> float:
         """Average distance of each point to every other point"""
-        mat = self._to_numpy_adjacency_matrix(not_edge=np.inf)
-        np.fill_diagonal(mat, 0)
-        node_count, _ = mat.shape
+        node_count = len(self.adjacency_matrix)
+        mat = floyd_distance(self.adjacency_matrix, node_count)
 
-        mat = self.floyd_distance(mat, node_count)
+        return mat.sum() / (node_count * (node_count - 1))
 
-        score = mat.sum() / (node_count * (node_count - 1))
 
-        if score == np.inf:
-            print(mat)
-
-        return score
-
-    @staticmethod
-    @numba.njit(fastmath=True)
-    def floyd_distance(matrix, n):
-        """Calculate Floyd-Warshall distance matrix"""
-        # pylint: disable=not-an-iterable
-        for k in range(n):
-            for i in range(n):
-                for j in range(n):
-                    if matrix[i, j] > matrix[i, k] + matrix[k, j]:
-                        matrix[i, j] = matrix[i, k] + matrix[k, j]
-        return matrix
-
-    def _to_numpy_adjacency_matrix(self, not_edge=0.0) -> np.ndarray:
-        """Create adjacency matrix as numpy array
-
-        Make a denser matrix, by ignoring actual edge indices and
-        replacing them with running index.
-
-        Args:
-            not_edge (float, optional): Value that is assigned to
-              non-edges. Defaults to 0.0.
-
-        Returns:
-            np.ndarray: adjacency matrix representation
-        """
-        graph = self.adjacency_list
-        node_count = len(graph)
-        if node_count == 0:
-            return np.empty((0, 0))
-
-        i, j, wts = [], [], []
-
-        for id_a, to_list in enumerate(self.adjacency_list):
-            for id_b, weight in to_list:
-                i.append(id_a)
-                j.append(id_b)
-                wts.append(weight)
-
-        adj = np.full((node_count, node_count), fill_value=not_edge)
-        adj[i, j] = wts
-
-        return adj
+@numba.njit(fastmath=True)
+def floyd_distance(matrix: np.ndarray, num_nodes: int) -> np.ndarray:
+    """Calculate Floyd-Warshall distance matrix"""
+    # pylint: disable=not-an-iterable
+    for k in range(num_nodes):
+        for i in range(num_nodes):
+            for j in range(num_nodes):
+                if matrix[i, j] > matrix[i, k] + matrix[k, j]:
+                    matrix[i, j] = matrix[i, k] + matrix[k, j]
+    return matrix
