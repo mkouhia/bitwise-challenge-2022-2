@@ -58,6 +58,7 @@ def _print_report(res: Result, base_net: BaseNetwork):
     score = base_net.comparison_score(new_net)
 
     print("\nBinary random key genetic algorithm")
+    print("Random initialization")
     print(f"{res.algorithm.n_gen} generations")
     print(f"Best score: {score:.3f}")
     print(f"Execution time: {res.exec_time:.2f} s")

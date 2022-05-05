@@ -12,6 +12,7 @@ from pymoo.core.population import Population
 from pymoo.core.problem import Problem
 from pymoo.core.callback import Callback
 from pymoo.core.result import Result
+from pymoo.operators.sampling.rnd import FloatRandomSampling
 from pymoo.optimize import minimize
 from pymoo.util.display import SingleObjectiveDisplay
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
@@ -217,11 +218,7 @@ def optimize(
 
     np.random.seed(47)
     population_size = 2 * problem.n_var
-    sampling = (
-        np.load(x_path)
-        if resume
-        else np.random.beta(4, 2, (population_size, problem.n_var))
-    )
+    sampling = np.load(x_path) if resume else FloatRandomSampling()
     n_gen_offset = _get_n_gen_offset(metric_log=metric_log) if resume else 0
 
     algorithm = BRKGA(
