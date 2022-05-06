@@ -214,7 +214,6 @@ def optimize(
     """
     problem = MyProblem(network_json)
 
-    np.random.seed(47)
     population_size = 2 * problem.n_var
     sampling = np.load(x_path) if resume else FloatRandomSampling()
     n_gen_offset = _get_n_gen_offset(metric_log=metric_log) if resume else 0
