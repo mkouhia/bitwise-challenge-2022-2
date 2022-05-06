@@ -47,7 +47,7 @@ def main(argv: list[str] = None):
 
 
 def _print_report(res: Result, base_net: BaseNetwork):
-    x_binary = res.opt.get("pheno")[0]
+    x_binary = res.opt.get("x_final")[0]
     del_edges = (x_binary == 0).nonzero()[0]
     remove_edges = np.array([base_net.edges[i] for i in del_edges.tolist()])
 
@@ -57,8 +57,14 @@ def _print_report(res: Result, base_net: BaseNetwork):
 
     score = base_net.comparison_score(new_net)
 
-    print("\nBinary random key genetic algorithm")
-    print("Random initialization")
+    print(
+        """
+Binary random key genetic algorithm
+- Random initialization
+- Minimize score of modified network graph
+- Correction of infeasible solutions
+"""
+    )
     print(f"{res.algorithm.n_gen} generations")
     print(f"Best score: {score:.3f}")
     print(f"Execution time: {res.exec_time:.2f} s")

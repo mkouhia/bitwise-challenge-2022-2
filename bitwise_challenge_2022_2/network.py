@@ -95,8 +95,12 @@ class BaseNetwork:
         return adj
 
     def get_edge_matrix(self) -> np.ndarray:
-        """Get edges as numpy array, Nx2, rows are to-from."""
+        """Get edges as numpy array of integers, Nx2, rows are to-from."""
         return np.array([self.edges[i] for i in range(len(self.edges))])
+
+    def get_weight_vector(self) -> np.ndarray:
+        """Get weights as numpy vector of floats"""
+        return np.array([self.weights[i] for i in range(len(self.edges))])
 
     @property
     def weights(self):
@@ -136,6 +140,7 @@ spec = [
     ("_total_weight", optional(float64)),
     ("_score", optional(float64)),
     ("_is_connected", optional(boolean)),
+    ("_bfs_visited", boolean[:]),
 ]
 
 
@@ -157,6 +162,7 @@ class NetworkGraph:
         self._total_weight: float | None = None
         self._score: float | None = None
         self._is_connected: bool | None = None
+        self._bfs_visited: np.ndarray = np.full(len(adjacency_matrix), False)
 
     def __repr__(self):
         return f"NetworkGraph(adjacency_matrix={self.adjacency_matrix})"
@@ -185,18 +191,23 @@ class NetworkGraph:
     def is_connected(self):
         """Underlying graph is connected"""
         if self._is_connected is None:
-            self._is_connected = self._is_connected_bfs()
+            self._is_connected = self._is_connected_bfs(True, 0)
         return self._is_connected
 
-    def _is_connected_bfs(self) -> bool:
+    def _is_connected_bfs(self, clear: bool, root: int) -> bool:
         """Check connectiviness by performing breadth-first-search
+
+        Args:
+            clear (bool): Clear array of visited nodes
+            root (int): Index of starting node
 
         Returns:
             bool: True if all nodes are reached
         """
-        root = 0
+        if clear:
+            self._bfs_visited = np.full(len(self.adjacency_matrix), False)
 
-        visited = {root}
+        self._bfs_visited[root] = True
         queue = [root]
 
         while queue:
@@ -206,11 +217,59 @@ class NetworkGraph:
                 value = self.adjacency_matrix[source, i]
                 if value == 0 or value == np.inf:  # pylint: disable=consider-using-in
                     continue
-                if i not in visited:
+                if not self._bfs_visited[i]:
                     queue.append(i)
-                    visited.add(i)
+                    self._bfs_visited[i] = True
 
-        return len(visited) == len(self.adjacency_matrix)
+        return self._bfs_visited.sum() == len(self.adjacency_matrix)
+
+    def repair_with_edges(self, edges: np.ndarray, weights: np.ndarray) -> np.ndarray:
+        """Add edges to the graph, until the graph is connected
+
+        Using a greedy algorithm, edge from set of not-connected edges
+        that has minimum weight, and has one end in the graph and the
+        other end in a not-connected node. Add the edge to the graph.
+        Continue until graph is connected.
+
+        Modify self.adjacency matrix in place.
+
+        Args:
+            edges (np.ndarray): Possible edges that are not included in
+              the graph, but could be added. Row of (to, from).
+            weights (np.ndarray): Vector of edge weights.
+
+        Raises:
+            UserWarning: The graph could not be repaired with the edges.
+
+        Returns:
+            np.ndarray: Vector of added edge indices
+        """
+        order = np.argsort(weights)
+        bfs_root = 0
+        added_edges = []
+        # Perform BFS to find connectedness, do not clear visited array.
+        while not self._is_connected_bfs(False, bfs_root):
+            edge_added = False
+            for i in order:
+                edge = edges[i]
+                start_is_visited = self._bfs_visited[edge[0]]
+                end_is_visited = self._bfs_visited[edge[1]]
+                if start_is_visited ^ end_is_visited:  # XOR
+                    # Add edge to graph
+                    self.adjacency_matrix[edge[0], edge[1]] = weights[i]
+                    self.adjacency_matrix[edge[1], edge[0]] = weights[i]
+                    # Set starting point for next BFS
+                    bfs_root = edge[0] if start_is_visited else edge[1]
+
+                    edge_added = True
+                    added_edges.append(i)
+                    break
+
+            if not edge_added:
+                raise UserWarning("Could not repair graph with given edges.")
+
+        self._is_connected = True
+        return np.array([added_edges], dtype="int").flatten()
 
     @property
     def total_weight(self) -> float:
@@ -251,6 +310,7 @@ def evaluate_many(
     base_matrix: np.ndarray,
     edge_options: np.ndarray,
     edges: np.ndarray,
+    weights: np.ndarray,
 ) -> np.ndarray:
     """Evaluate multiple network options in parallel
 
@@ -260,62 +320,54 @@ def evaluate_many(
           of parallel options and M is the number of edges in the base
           matrix. Values are True/False, depending on whether the edge
           is removed or not.
-        edges (np.ndarray): Matrix of Nx2, where rows represent edges
-          as (start node, end node).
+        edges (np.ndarray): Edge matrix of Nx2, where rows represent
+          edges as (start node, end node).
+        weights (np.ndarray): Weight vector for edges.
 
     Returns:
-        np.ndarray: Nx2 matrix, containing objective function values
-          in column 0 and constraint values in column 1.
+        np.ndarray: Vector containing objective function values
     """
+    n_population = len(edge_options)
+    objective = np.empty(n_population)
+    hashes = np.empty(n_population)
+    x_final = edge_options.copy()
 
-    result = np.empty((len(edge_options), 2))
-
-    for i in numba.prange(len(edge_options)):  # pylint: disable=not-an-iterable
+    for i in numba.prange(n_population):  # pylint: disable=not-an-iterable
 
         row_x_binary = edge_options[i]
         remove_edges = edges[~row_x_binary]
 
+        removed_edge_ids = (~row_x_binary).nonzero()[0]
+
         new_net = NetworkGraph(base_matrix)
         new_net.remove_edges(remove_edges)
+        if not new_net.is_connected:
+            repair_ids = new_net.repair_with_edges(remove_edges, weights[~row_x_binary])
+            repair_ids_original = removed_edge_ids[repair_ids]
 
-        result[i, 0] = new_net.evaluate()
-        result[i, 1] = -1 if new_net.is_connected else 1
+        for j in repair_ids_original:
+            x_final[i, j] = True
 
-    return result
+        objective[i] = new_net.evaluate()
+        hashes[i] = array_hash(x_final[i].nonzero()[0])
 
-
-@numba.njit(parallel=True)
-def create_comparison_hash(edge_options: np.ndarray):
-    """Create array containing hash values, used for comparison
-
-    Args:
-        edge_options (np.ndarray): Matrix of NxM, where N is number
-          of parallel options and M is the number of edges in the base
-          matrix. Values are True/False, depending on whether the edge
-          is removed or not.
-
-    Returns:
-        np.ndarray: Integer array of length N, containing hash values
-    """
-    result = np.empty(len(edge_options))
-    for i in numba.prange(len(edge_options)):  # pylint: disable=not-an-iterable
-        result[i] = _base_2_to_10_array(edge_options[i].astype("int"))
-    return result
+    return objective, hashes, x_final
 
 
 @numba.njit
-def _base_2_to_10_array(arr):
-    """Convert base2 array to base-10
-
-    This might overflow, but does not matter. It is used for hashing.
+def array_hash(arr: np.ndarray) -> int:
+    """Compute hash for an array
 
     Args:
-        arr (np.ndarray): 1D array with 1's and 0's
+        arr (np.ndarray): Input array, containing numbers. Can be of
+          any shape. The shape also affects hash value.
 
     Returns:
         int: hash value
     """
-    res = 0
-    for bit in arr:
-        res = (res << 1) ^ bit
-    return res
+    hash_value = 17
+    for val in arr.flatten():
+        hash_value = 31 * hash_value + val
+    for val in arr.shape:
+        hash_value = 31 * hash_value + val
+    return hash_value

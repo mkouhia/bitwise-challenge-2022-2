@@ -86,6 +86,12 @@ def test_get_edge_matrix(base_network: BaseNetwork):
     assert_array_equal(base_network.get_edge_matrix(), expected)
 
 
+def test_get_weight_vector(base_network: BaseNetwork):
+    """Proper weights are returned"""
+    expected = np.array([1, 2, 4, 8])
+    assert_array_equal(base_network.get_weight_vector(), expected)
+
+
 def test_challenge_edge_ids(challenge_base: BaseNetwork):
     """Challenge edge ids are from 0 to N-1"""
     assert challenge_base.edges.keys() == set(range(len(challenge_base.edges)))
@@ -133,6 +139,29 @@ def test_is_not_connected():
     adj = edges_to_adjacency_matrix(edges, 6)
     graph = NetworkGraph(adj)
     assert not graph.is_connected
+
+
+def test_repair_with_edges():
+    """When repaired, graph is connected"""
+    edges = np.array([[0, 1], [0, 3]])
+    weights = np.array([1.0, 8.0])
+
+    adj = np.array(
+        [
+            [0.0, np.inf, np.inf, np.inf],
+            [np.inf, 0.0, 2.0, 4.0],
+            [np.inf, 2.0, 0.0, np.inf],
+            [np.inf, 4.0, np.inf, 0.0],
+        ]
+    )
+    expected = adj.copy()
+    expected[0, 1] = 1.0
+    expected[1, 0] = 1.0
+
+    net = NetworkGraph(adj)
+    net.repair_with_edges(edges, weights)
+    assert_array_equal(net.adjacency_matrix, expected)
+    assert net._is_connected_bfs(True, 0)  # pylint: disable=protected-access
 
 
 def test_total_weight(simple_graph: NetworkGraph):

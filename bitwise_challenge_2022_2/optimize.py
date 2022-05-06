@@ -18,7 +18,7 @@ from pymoo.util.display import SingleObjectiveDisplay
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
 import numba
 
-from .network import BaseNetwork, evaluate_many, create_comparison_hash
+from .network import BaseNetwork, evaluate_many
 
 
 class MyProblem(Problem):
@@ -27,11 +27,13 @@ class MyProblem(Problem):
 
     def __init__(self, network_json: os.PathLike, **kwargs):
         self.base_network = BaseNetwork.from_json(network_json)
+        self.edges = self.base_network.get_edge_matrix()
+        self.weights = self.base_network.get_weight_vector()
 
         super().__init__(
             n_var=len(self.base_network.edges),
             n_obj=1,
-            n_constr=1,
+            n_constr=0,
             xl=0,
             xu=1,
             **kwargs,
@@ -39,15 +41,15 @@ class MyProblem(Problem):
 
     def _evaluate(self, x, out, *args, **kwargs):
         base_mat = self.base_network.to_adjacency_matrix()
-        edges = self.base_network.get_edge_matrix()
         x_boolean = np.round(x).astype(bool)
 
-        result = evaluate_many(base_mat, x_boolean, edges)
+        objective, hash_, x_final = evaluate_many(
+            base_mat, x_boolean, self.edges, self.weights
+        )
 
-        out["F"] = result[:, 0]
-        out["G"] = result[:, 1]
-        out["pheno"] = x_boolean
-        out["hash"] = create_comparison_hash(x_boolean)
+        out["F"] = objective
+        out["hash"] = hash_
+        out["x_final"] = x_final
 
 
 class MyDuplicateElimination(DefaultDuplicateElimination):
@@ -101,7 +103,8 @@ class MyDisplay(SingleObjectiveDisplay):  # pylint: disable=too-few-public-metho
         # Offset n_gen in printout
         self.output.attrs[0][1] += self.n_gen_offset
 
-        self.output.append("x_avg", algorithm.pop.get("pheno").mean())
+        self.output.append("x_opt", algorithm.opt[0].get("x_final").mean())
+        self.output.append("x_avg", algorithm.pop.get("x_final").mean())
         self.output.append(
             "eval_per_s", algorithm.pop.size / (time_now - self._prev_time)
         )
@@ -130,7 +133,7 @@ class MyCallback(Callback):  # pylint: disable=too-few-public-methods
         self.x_path = Path(x_path)
         self.metric_log = Path(metric_log)
 
-        for key in ["n_gen", "f_opt", "f_avg", "cv_avg", "x_avg", "eval_per_s"]:
+        for key in ["n_gen", "f_opt", "f_avg", "x_opt", "x_avg", "eval_per_s"]:
             self.data[key] = []
         self.n_gen_offset = n_gen_offset
         self._init_log(resume=resume)
@@ -149,17 +152,12 @@ class MyCallback(Callback):  # pylint: disable=too-few-public-methods
         time_now = time.time()
 
         opt = algorithm.opt[0]
-        # pylint: disable=invalid-name
-        F, CV, X, feasible = algorithm.pop.get("F", "CV", "pheno", "feasible")
-        feasible = np.where(feasible[:, 0])[0]
 
         self.data["n_gen"].append(algorithm.n_gen + self.n_gen_offset)
-        self.data["f_opt"].append(opt.F[0] if opt.feasible[0] else np.NaN)
-        self.data["f_avg"].append(
-            np.mean(F[feasible]) if (opt.feasible[0] and len(feasible) > 0) else np.NaN
-        )
-        self.data["cv_avg"].append(np.mean(CV))
-        self.data["x_avg"].append(np.mean(X))
+        self.data["f_opt"].append(opt.F[0])
+        self.data["f_avg"].append(algorithm.pop.get("F").mean())
+        self.data["x_opt"].append(opt.get("x_final").mean())
+        self.data["x_avg"].append(algorithm.pop.get("x_final").mean())
         self.data["eval_per_s"].append(
             algorithm.pop.size / (time_now - self._prev_time)
         )
