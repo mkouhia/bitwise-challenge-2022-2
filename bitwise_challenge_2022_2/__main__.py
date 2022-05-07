@@ -23,7 +23,11 @@ def main(argv: list[str] = None):
     if parsed_args.termination is not None:
         for item in parsed_args.termination.split(","):
             parts = item.split(":")
-            val = int(parts[1]) if parts[0] in ["nth_gen", "n_last", "n_max_gen", "n_max_evals"] else float(parts[1])
+            val = (
+                int(parts[1])
+                if parts[0] in ["nth_gen", "n_last", "n_max_gen", "n_max_evals"]
+                else float(parts[1])
+            )
             termination[parts[0]] = val
 
     try:
@@ -65,8 +69,9 @@ Binary random key genetic algorithm
 - Random initialization
 - Minimize score of modified network graph
 - Correction of infeasible solutions
-- Arguments: {' '.join(sys.argv)}
+- Arguments: {' '.join(sys.argv[1:])}
 - {res.algorithm.n_gen} generations
+- Best objective value: {res.opt.F[0]:.2f}
 - Best score: {score:.3f}
 - Execution time: {res.exec_time:.2f} s
 """

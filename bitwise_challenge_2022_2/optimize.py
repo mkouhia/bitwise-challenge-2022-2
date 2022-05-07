@@ -23,7 +23,7 @@ from pymoo.util.termination.default import SingleObjectiveDefaultTermination
 from pyrecorder.recorder import Recorder
 from pyrecorder.writers.streamer import Streamer
 
-from .network import BaseNetwork, evaluate_many
+from .network import BaseNetwork, NetworkGraph, evaluate_many
 
 
 class MyProblem(Problem):
@@ -290,6 +290,7 @@ def optimize(
     metric_log: os.PathLike | None = None,
     resume: bool = False,
     plot: bool = False,
+    seed: int | None = None,
     **kwargs,
 ) -> Result:
     """Main optimization method
@@ -314,7 +315,20 @@ def optimize(
     problem = MyProblem(network_json)
 
     population_size = 2 * problem.n_var
-    sampling = np.load(x_path) if resume else FloatRandomSampling()
+    initial_nonrandom_count = 5
+
+    if resume:
+        sampling = np.load(x_path)
+    else:
+        rng = np.random.default_rng(seed)
+        initial_feasible = _create_feasible_solutions(
+            network_json, rng, initial_nonrandom_count
+        )
+        initial_random = rng.random(
+            (population_size - initial_nonrandom_count, problem.n_var)
+        )
+        sampling = np.concatenate((initial_feasible, initial_random), axis=0)
+
     n_gen_offset = _get_n_gen_offset(metric_log=metric_log) if resume else 0
 
     algorithm = BRKGA(
@@ -337,9 +351,66 @@ def optimize(
 
     termination = SingleObjectiveDefaultTermination(**termination)
 
-    res = minimize(problem, algorithm, termination, **kwargs)
+    res = minimize(problem, algorithm, termination, seed=seed, **kwargs)
 
     return res
+
+
+def _create_feasible_solutions(
+    network_json: os.PathLike, rng: np.random.Generator, count: int
+) -> np.ndarray:
+    """Create some feasible solutions using heuristics"""
+    base_network = BaseNetwork.from_json(network_json)
+    arr = base_network.to_adjacency_matrix()
+    edges = base_network.get_edge_matrix()
+    random_orders = rng.permuted(
+        np.tile(np.arange(len(edges)), count).reshape(count, len(edges)), axis=1
+    )
+    return _make_feasible_sols(arr, edges, random_orders)
+
+
+@numba.njit(parallel=True)
+def _make_feasible_sols(
+    arr: np.ndarray, edges: np.ndarray, random_orders: np.ndarray
+) -> np.ndarray:
+    result = np.empty(random_orders.shape, np.float64)
+    for i in numba.prange(len(random_orders)):  # pylint: disable=not-an-iterable
+        result[i] = _make_feasible_sol(arr, edges, random_orders[i])
+    return result
+
+
+@numba.njit
+def _make_feasible_sol(
+    arr: np.ndarray, edges: np.ndarray, random_order: np.ndarray
+) -> np.ndarray:
+    """Generate feasible solution
+
+    Args:
+        arr (np.ndarray): base adjacency matrix
+        edges (np.ndarray): matrix of all edges
+        random_order (np.ndarray): order, in which edges are tried to be
+          removed
+
+    Returns:
+        np.ndarray: 1/0 float array of same length as edges
+    """
+    net = NetworkGraph(arr)
+    score = net.evaluate()
+    x_created = np.full(len(edges), 1.0, np.float64)
+    for i in random_order:
+        original_weight = net.adjacency_matrix[edges[i, 0], edges[i, 1]]
+        net.adjacency_matrix[edges[i, 0], edges[i, 1]] = np.inf
+        net.adjacency_matrix[edges[i, 1], edges[i, 0]] = np.inf
+
+        new_score = net.evaluate()
+        if new_score < score:
+            score = new_score
+            x_created[i] = 0.0
+        else:
+            net.adjacency_matrix[edges[i, 0], edges[i, 1]] = original_weight
+            net.adjacency_matrix[edges[i, 1], edges[i, 0]] = original_weight
+
+    return x_created
 
 
 def _get_n_gen_offset(metric_log: os.PathLike | None):
