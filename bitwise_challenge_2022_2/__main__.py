@@ -66,7 +66,7 @@ def _print_report(res: Result, base_net: BaseNetwork):
     print(
         f"""
 Binary random key genetic algorithm
-- Random initialization
+- Random initialization, with some pre-generated feasible results
 - Minimize score of modified network graph
 - Correction of infeasible solutions
 - Arguments: {' '.join(sys.argv[1:])}
