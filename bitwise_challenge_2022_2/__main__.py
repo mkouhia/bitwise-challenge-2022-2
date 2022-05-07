@@ -23,7 +23,8 @@ def main(argv: list[str] = None):
     if parsed_args.termination is not None:
         for item in parsed_args.termination.split(","):
             parts = item.split(":")
-            termination[parts[0]] = float(parts[1])
+            val = int(parts[1]) if parts[0] in ["nth_gen", "n_last", "n_max_gen", "n_max_evals"] else float(parts[1])
+            termination[parts[0]] = val
 
     try:
         network_json = Path(__file__).parent / "koodipahkina-data.json"
@@ -59,6 +60,7 @@ def _print_report(res: Result, base_net: BaseNetwork):
     score = base_net.comparison_score(new_net)
 
     print("\nBinary random key genetic algorithm")
+    print(f"- Arguments: {' '.join(sys.argv)}")
     print("Random initialization")
     print(f"{res.algorithm.n_gen} generations")
     print(f"Best score: {score:.3f}")
