@@ -44,6 +44,16 @@ def main(argv: list[str] = None):
             for y_i in y_raw.split(","):
                 i = headers.index(y_i)
                 plt.plot(logs[i], yside=side, label=headers[i])
+
+        y_scales = (
+            parsed_args.yscale.split(":")
+            if ":" in parsed_args.yscale
+            else [parsed_args.yscale, parsed_args.yscale]
+        )
+        plt.yscale(y_scales[0], yside="left")
+        plt.yscale(y_scales[1], yside="right")
+        plt.xscale(parsed_args.xscale)
+
         plt.show()
 
         if parsed_args.watch:
@@ -73,10 +83,22 @@ Separated by comma. Default: f_opt,f_avg""",
     )
     parser.add_argument(
         "--y2",
-        default="cv_avg,x_avg",
+        default=None,
         help="""Variables to be plotted on the right y-axis.
-Separated by comma. Default: cv_avg,x_avg""",
+Separated by comma. Default: None""",
     )
+    parser.add_argument(
+        "--yscale",
+        default="linear",
+        help="""Y axis scaling, linear|log, or [linear|log]:[linear|log]
+            for different left/right values. Default: linear""",
+    )
+    parser.add_argument(
+        "--xscale",
+        default="linear",
+        help="X axis scaling, linear|log. Default: linear",
+    )
+
     return parser.parse_args(args)
 
 

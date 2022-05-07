@@ -90,7 +90,7 @@ class BaseNetwork:
             for edge_id, (id_a, id_b) in self.edges.items():
                 adj[id_a, id_b] = self.weights[edge_id]
                 adj[id_b, id_a] = self.weights[edge_id]
-            np.fill_diagonal(adj, 0)
+            np.fill_diagonal(adj, 0.0)
 
         return adj
 
@@ -215,7 +215,7 @@ class NetworkGraph:
 
             for i in range(len(self.adjacency_matrix)):
                 value = self.adjacency_matrix[source, i]
-                if value == 0 or value == np.inf:  # pylint: disable=consider-using-in
+                if value == 0.0 or np.isinf(value):  # pylint: disable=consider-using-in
                     continue
                 if not self._bfs_visited[i]:
                     queue.append(i)

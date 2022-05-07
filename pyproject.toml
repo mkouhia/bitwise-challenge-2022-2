@@ -11,6 +11,8 @@ numba = "^0.55.1"
 icc-rt = "^2020.0.133"
 pymoo = { git = "https://github.com/mkouhia/pymoo.git", branch = "master-fixed" }
 plotext = {version = "^5.0.2", optional = true}
+networkx = "^2.8"
+pyrecorder = "^0.2.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
