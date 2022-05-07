@@ -35,6 +35,7 @@ def main(argv: list[str] = None):
             x_path=parsed_args.xpath,
             metric_log=parsed_args.metric_log,
             resume=parsed_args.resume,
+            plot=parsed_args.plot,
         )
 
         if not parsed_args.quiet:
@@ -94,6 +95,9 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
         help="Use multiprocessing for problem evaluation",
     )
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress output")
+    parser.add_argument(
+        "--plot", action="store_true", help="Display progress plot during calculation"
+    )
 
     return parser.parse_args(args)
 

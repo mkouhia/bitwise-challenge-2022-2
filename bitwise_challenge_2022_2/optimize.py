@@ -4,8 +4,12 @@ import os
 from pathlib import Path
 import shutil
 import time
-import numpy as np
 
+import networkx as nx
+import numba
+import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import DefaultDuplicateElimination
 from pymoo.core.population import Population
@@ -16,9 +20,10 @@ from pymoo.operators.sampling.rnd import FloatRandomSampling
 from pymoo.optimize import minimize
 from pymoo.util.display import SingleObjectiveDisplay
 from pymoo.util.termination.default import SingleObjectiveDefaultTermination
-import numba
+from pyrecorder.recorder import Recorder
+from pyrecorder.writers.streamer import Streamer
 
-from .network import BaseNetwork, evaluate_many, create_comparison_hash
+from .network import BaseNetwork, NetworkGraph, evaluate_many, create_comparison_hash
 
 
 class MyProblem(Problem):
@@ -120,6 +125,8 @@ class MyCallback(Callback):  # pylint: disable=too-few-public-methods
 
     def __init__(
         self,
+        plot: bool = False,
+        network_json: os.PathLike | None = None,
         x_path: os.PathLike | None = None,
         metric_log: os.PathLike | None = None,
         resume: bool = False,
@@ -129,6 +136,17 @@ class MyCallback(Callback):  # pylint: disable=too-few-public-methods
 
         self.x_path = Path(x_path)
         self.metric_log = Path(metric_log)
+
+        self.base_network = (
+            None if network_json is None else BaseNetwork.from_json(network_json)
+        )
+        self.rec = Recorder(Streamer()) if plot else None
+
+        self._current_best_x = np.empty(0)
+        self._current_obj_dist = np.empty(0)
+        self._current_gen = 0
+        self._obj_history = []
+        self._f_max = 0.0
 
         for key in ["n_gen", "f_opt", "f_avg", "cv_avg", "x_avg", "eval_per_s"]:
             self.data[key] = []
@@ -149,6 +167,12 @@ class MyCallback(Callback):  # pylint: disable=too-few-public-methods
         time_now = time.time()
 
         opt = algorithm.opt[0]
+
+        self._current_best_x = opt.get("pheno")
+        self._current_obj_dist = algorithm.pop.get("F")
+        self._current_gen = algorithm.n_gen
+        self._obj_history.append(opt.F[0])
+
         # pylint: disable=invalid-name
         F, CV, X, feasible = algorithm.pop.get("F", "CV", "pheno", "feasible")
         feasible = np.where(feasible[:, 0])[0]
@@ -174,6 +198,13 @@ class MyCallback(Callback):  # pylint: disable=too-few-public-methods
 
         self._prev_time = time_now
 
+        if self.rec is not None:
+            t0 = time.time()
+            self._plot_results()
+            self.rec.record()
+            t1 = time.time()
+            print(f"Plotting overhead: {t1-t0:.3f} s")
+
     def _write_x_file(self, x_array):
         """Write x array to file, using temporary .bak file"""
         handle_bak = self.x_path.exists()
@@ -186,6 +217,74 @@ class MyCallback(Callback):  # pylint: disable=too-few-public-methods
         if handle_bak:
             os.unlink(bak_path)
 
+    def _plot_results(self):
+        """Create matplotlib plot of the results, leave out plt.show()"""
+        graph = nx.Graph()
+        edges = [
+            (u, v, self.base_network.weights[id_])
+            for id_, (u, v) in self.base_network.edges.items()
+        ]
+        edges_actual = [
+            (u, v)
+            for id_, (u, v) in self.base_network.edges.items()
+            if self._current_best_x[id_]
+        ]
+        edges_missing = [
+            (u, v)
+            for id_, (u, v) in self.base_network.edges.items()
+            if not self._current_best_x[id_]
+        ]
+        graph.add_weighted_edges_from(edges)
+        graph.add_nodes_from(self.base_network.nodes.keys())
+
+        plt.figure(figsize=(14, 8))
+
+        ax0: Axes = plt.subplot2grid((2, 5), (0, 0), 2, 3)
+        ax1: Axes = plt.subplot2grid((2, 5), (0, 3), 1, 2)
+        ax2: Axes = plt.subplot2grid((2, 5), (1, 3), 1, 2)
+
+        # ax0 - graph
+        ax0.set_title(f"Generation {self._current_gen}", y=0.97)
+        nx.draw_networkx_nodes(
+            graph, pos=self.base_network.nodes, node_size=50, node_color="gold", ax=ax0
+        )
+        nx.draw_networkx_edges(
+            graph,
+            pos=self.base_network.nodes,
+            edgelist=edges_missing,
+            edge_color="#C14242",
+            alpha=0.3,
+            ax=ax0,
+        )
+        nx.draw_networkx_edges(
+            graph,
+            pos=self.base_network.nodes,
+            edgelist=edges_actual,
+            ax=ax0,
+        )
+        ax0.set_aspect("equal")
+        ax0.set_axis_off()
+
+        # ax1 - distribution of objective values as histogram
+        ax1.set_ylabel("Count")
+        ax1.set_xlabel("Objective value")
+
+        f_dist = self._current_obj_dist[~np.isinf(self._current_obj_dist)]
+        min_val = (self._obj_history[-1] // 100) * 100
+        self._f_max = max((f_dist.max() // 100 + 1) * 100, self._f_max)
+
+        ax1.hist(
+            f_dist, bins=min_val + np.arange((self._f_max - min_val) // 50 + 1) * 50
+        )
+        ax1.set_xlim(min_val, self._f_max)
+
+        # ax2 - objective vs generations
+        ax2.set_ylabel("Objective value")
+        ax2.set_xlabel("Number of generations")
+        ax2.plot(self._obj_history)
+
+        plt.subplots_adjust(0.02, 0.06, 0.98, 0.98, 0.04, 0.15)
+
 
 def optimize(
     network_json: os.PathLike,
@@ -193,7 +292,8 @@ def optimize(
     x_path: os.PathLike | None = None,
     metric_log: os.PathLike | None = None,
     resume: bool = False,
-    **kwargs
+    plot: bool = False,
+    **kwargs,
 ) -> Result:
     """Main optimization method
 
@@ -229,6 +329,8 @@ def optimize(
         eliminate_duplicates=MyDuplicateElimination(),
         sampling=sampling,
         callback=MyCallback(
+            plot=plot,
+            network_json=network_json,
             x_path=x_path,
             metric_log=metric_log,
             resume=resume,

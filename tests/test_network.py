@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
+import networkx as nx
 
 from bitwise_challenge_2022_2.network import BaseNetwork, NetworkGraph
 
@@ -152,3 +153,56 @@ def test_avg_distance(simple_graph: NetworkGraph):
     ]
     # pylint: disable=protected-access
     assert simple_graph._avg_distance() == sum(distances) / len(distances)
+
+
+@pytest.fixture(name="networkx_base")
+def networkx_base_fx(challenge_base: BaseNetwork) -> nx.Graph:
+    """Create networkx graph corresponding to base network"""
+    graph = nx.Graph()
+    edges = [
+        (u, v, challenge_base.weights[id])
+        for id, (u, v) in challenge_base.edges.items()
+    ]
+    graph.add_weighted_edges_from(edges)
+    graph.add_nodes_from(challenge_base.nodes.keys())
+    return graph
+
+
+def test_compare_networkx_base(challenge_base: BaseNetwork, networkx_base: nx.Graph):
+    """Compare base network avg shortest path length to networkx"""
+    mat = challenge_base.to_adjacency_matrix()
+    net = NetworkGraph(mat)
+
+    expected = nx.average_shortest_path_length(
+        networkx_base, weight="weight", method="floyd-warshall-numpy"
+    )
+    received = net._avg_distance()  # pylint: disable=protected-access
+
+    assert received == pytest.approx(expected)
+
+
+def test_compare_networkx_modified(
+    challenge_base: BaseNetwork, networkx_base: nx.Graph
+):
+    """Compare modified network to netorkx"""
+    # fmt: off
+    edge_ids = [0, 1, 2, 3, 5, 6, 7, 8, 11, 12, 13, 15, 16, 17, 21, 22, 23, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 38, 39, 40, 43, 44, 45, 47, 49, 52, 53, 55, 57, 60, 62, 63, 65, 66, 67, 68, 70, 71, 72, 74, 76, 78, 79, 80, 81, 82, 85, 86, 88, 89, 90, 91, 92, 94, 95, 96, 98, 100, 101, 102, 103, 104, 105, 111, 112, 113, 114, 115, 116, 117, 120, 122, 123, 124, 125, 126, 128, 130, 132, 133, 135, 137, 138, 139, 140, 141, 142, 144, 146, 148, 149, 151, 153, 154, 155, 157, 159, 160, 161, 163, 164, 167, 168, 169, 170, 172, 174, 177, 178, 179, 180, 181, 183, 184, 185, 186, 187, 189, 191, 192, 193, 194, 195, 196, 198, 201, 203, 204, 205, 207, 209, 212, 214, 218, 219, 220, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 233, 234, 235, 237, 238, 241, 242, 243, 244, 247, 248, 249, 250, 252, 255, 257, 258, 259, 260, 262, 263, 264, 266, 267, 268, 269, 270, 271, 274, 275, 276, 277, 279, 284, 286, 287, 289, 290, 291, 295, 296, 297, 298, 299, 301, 302, 303, 304, 306, 307, 309, 311, 312, 313, 314, 317, 318, 319, 320, 322, 325, 326, 329, 334, 335, 337, 339, 340, 341, 345, 347, 350, 354, 356, 359, 360, 361, 363, 365, 366, 369, 373, 374, 375, 378, 380, 382, 388, 389, 390, 391, 395, 396, 397, 399, 401, 402, 403, 404, 406, 407, 410, 413, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431]
+    # fmt: on
+
+    mat = challenge_base.to_adjacency_matrix()
+    net = NetworkGraph(mat)
+    all_edges = challenge_base.get_edge_matrix()
+    remove_edges = all_edges[edge_ids]
+
+    net.remove_edges(remove_edges)
+    networkx_base.remove_edges_from(remove_edges)
+
+    assert net.is_connected
+    assert nx.is_connected(networkx_base)
+
+    expected = nx.average_shortest_path_length(
+        networkx_base, weight="weight", method="floyd-warshall-numpy"
+    )
+    received = net._avg_distance()  # pylint: disable=protected-access
+
+    assert received == pytest.approx(expected)
