@@ -35,7 +35,7 @@ def main(argv: list[str] = None):
         res = optimize(
             network_json,
             termination=termination,
-            seed=1,
+            seed=parsed_args.seed,
             verbose=not parsed_args.quiet,
             x_path=parsed_args.xpath,
             metric_log=parsed_args.metric_log,
@@ -110,6 +110,9 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress output")
     parser.add_argument(
         "--plot", action="store_true", help="Display progress plot during calculation"
+    )
+    parser.add_argument(
+        "--seed", default=1, type=int, help="Random seed. Default: 1"
     )
 
     return parser.parse_args(args)
