@@ -71,7 +71,7 @@ Binary random key genetic algorithm
 - Correction of infeasible solutions
 - Arguments: {' '.join(sys.argv[1:])}
 - {res.algorithm.n_gen} generations
-- Best objective value: {res.opt.F[0]:.2f}
+- Best objective value: {res.F[0]:.2f}
 - Best score: {score:.3f}
 - Execution time: {res.exec_time:.2f} s
 """
