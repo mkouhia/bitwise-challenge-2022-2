@@ -3,3 +3,4 @@ __pycache__/
 opt_X_latest.npy
 opt_log.txt
 tmp/
+bitwise-challenge-2022-2.db

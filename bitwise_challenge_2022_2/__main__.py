@@ -3,12 +3,8 @@
 import argparse
 from pathlib import Path
 import sys
-import numpy as np
 
-from pymoo.core.result import Result
-
-from .network import BaseNetwork, NetworkGraph
-from .optimize import optimize
+from .optimize import BRKGAOptimization
 
 
 def main(argv: list[str] = None):
@@ -19,22 +15,24 @@ def main(argv: list[str] = None):
     """
     parsed_args = _parse_args(argv)
 
-    termination = {}
-    if parsed_args.termination is not None:
-        for item in parsed_args.termination.split(","):
+    restart = {}
+    if parsed_args.restart is not None:
+        for item in parsed_args.restart.split(","):
             parts = item.split(":")
             val = (
                 int(parts[1])
                 if parts[0] in ["nth_gen", "n_last", "n_max_gen", "n_max_evals"]
                 else float(parts[1])
             )
-            termination[parts[0]] = val
+            restart[parts[0]] = val
 
     try:
         network_json = Path(__file__).parent / "koodipahkina-data.json"
-        res = optimize(
-            network_json,
-            termination=termination,
+        solver = BRKGAOptimization(network_json)
+        solver.optimize(
+            termination=restart,
+            n_trials=parsed_args.n_trials,
+            optuna_prune=parsed_args.optuna_prune,
             seed=parsed_args.seed,
             verbose=not parsed_args.quiet,
             x_path=parsed_args.xpath,
@@ -43,53 +41,32 @@ def main(argv: list[str] = None):
             plot=parsed_args.plot,
         )
 
-        if not parsed_args.quiet:
-            base_net = BaseNetwork.from_json(network_json)
-            _print_report(res, base_net)
-
     except KeyboardInterrupt:
         print("\nInterrupted, exiting")
         sys.exit(1)
-
-
-def _print_report(res: Result, base_net: BaseNetwork):
-    x_binary = res.opt.get("x_final")[0]
-    del_edges = (x_binary == 0).nonzero()[0]
-    remove_edges = np.array([base_net.edges[i] for i in del_edges.tolist()])
-
-    base_mat = base_net.to_adjacency_matrix()
-    new_net = NetworkGraph(base_mat)
-    new_net.remove_edges(remove_edges)
-
-    score = base_net.comparison_score(new_net)
-
-    print(
-        f"""
-Binary random key genetic algorithm
-- Random initialization, with some pre-generated feasible results
-- Minimize score of modified network graph
-- Correction of infeasible solutions
-- Arguments: {' '.join(sys.argv[1:])}
-- {res.algorithm.n_gen} generations
-- Best objective value: {res.F[0]:.2f}
-- Best score: {score:.3f}
-- Execution time: {res.exec_time:.2f} s
-"""
-    )
-    print("Solution:")
-    print(", ".join(del_edges.astype(str)))
 
 
 def _parse_args(args: list[str]) -> argparse.Namespace:
     """Parse arguments from command line"""
     parser = argparse.ArgumentParser(description="""Optimize liana network.""")
     parser.add_argument(
-        "--termination",
-        default="n_max_evals:1000000",
-        help="""Termination specification in format key1:value1,key2:value2.
+        "--n-trials",
+        default=None,
+        type=int,
+        help="Number of trials for hyperparameter optimization. Default: None",
+    )
+    parser.add_argument(
+        "--optuna-prune",
+        action="store_true",
+        help="Use pruning in hyperparameter optimization. Default: no pruning",
+    )
+    parser.add_argument(
+        "--restart",
+        default="n_max_evals:1000000,n_last:500,n_max_gen:1000",
+        help="""Restart specification in format key1:value1,key2:value2.
             Available values: see keyword arguments at
             https://pymoo.org/interface/termination.html .
-            Default: n_max_evals:1000000""",
+            Default: n_max_evals:1000000,n_last:500,n_max_gen:1000""",
     )
     parser.add_argument(
         "--metric-log",
@@ -111,9 +88,7 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--plot", action="store_true", help="Display progress plot during calculation"
     )
-    parser.add_argument(
-        "--seed", default=1, type=int, help="Random seed. Default: 1"
-    )
+    parser.add_argument("--seed", default=1, type=int, help="Random seed. Default: 1")
 
     return parser.parse_args(args)
 

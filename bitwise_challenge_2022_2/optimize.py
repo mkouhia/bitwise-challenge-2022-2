@@ -1,8 +1,10 @@
 """Optimization implementation"""
 
+import logging
 import os
 from pathlib import Path
 import shutil
+import sys
 import time
 
 import networkx as nx
@@ -10,7 +12,9 @@ import numba
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+import optuna
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
+from pymoo.core.algorithm import Algorithm
 from pymoo.core.duplicate import DefaultDuplicateElimination
 from pymoo.core.population import Population
 from pymoo.core.problem import Problem
@@ -283,77 +287,188 @@ class MyCallback(Callback):  # pylint: disable=too-few-public-methods
         plt.subplots_adjust(0.02, 0.06, 0.98, 0.98, 0.04, 0.15)
 
 
-def optimize(
-    network_json: os.PathLike,
-    termination: dict | None = None,
-    x_path: os.PathLike | None = None,
-    metric_log: os.PathLike | None = None,
-    resume: bool = False,
-    plot: bool = False,
-    seed: int | None = None,
-    **kwargs,
-) -> Result:
-    """Main optimization method
+class BRKGAOptimization:
 
-    Args:
+    """Optimization wrapper class
+
+    Attributes:
         network_json (os.PathLike): Location to network specification
-        termination (dict | None, optional): Keyword arguments
-          for termination criteria. See
-          :func:`~pymoo.util.termination.default.SingleObjectiveDefaultTermination`.
-          Defaults to None.
-        x_path (os.PathLike | None): location for saving intermediate
-          x values for population.
-        metric_log (os.PathLike | None): location for logging
-          optimization running metrics.
-        resume (bool): continue from previous result in x_path.
-          Defaults to False.
-        kwargs: keyword arguments to minimization problem
-
-    Returns:
-        Result: pymoo optimization result
     """
-    problem = MyProblem(network_json)
 
-    population_size = 2 * problem.n_var
-    initial_nonrandom_count = 5
+    def __init__(self, network_json: os.PathLike) -> None:
+        self.network_json = network_json
 
-    if resume:
-        sampling = np.load(x_path)
-    else:
-        rng = np.random.default_rng(seed)
-        initial_feasible = _create_feasible_solutions(
-            network_json, rng, initial_nonrandom_count
+    def optimize(
+        self, n_trials: int | None = None, verbose=True, optuna_prune=True, **kwargs
+    ):
+
+        if n_trials is None:
+            res = self.optimize_single(verbose=verbose, **kwargs)
+            if verbose:
+                self._print_single_report(res)
+        else:
+            study = self.optimize_optuna(n_trials, optuna_prune, **kwargs)
+            if verbose:
+                self._print_optuna_report(study)
+
+    def optimize_optuna(self, n_trials: int, optuna_prune=True, **kwargs):
+        """Optimize using optuna hyperparameter optimization
+
+        Args:
+            n_trials (int): number of Optuna trials
+        """
+
+        def _optuna_objective(trial: optuna.trial.Trial):
+            params = {
+                "elite_frac": trial.suggest_float("elite_frac", 0.15, 0.25),
+                "mutant_frac": trial.suggest_float("mutant_frac", 0.05, 0.15),
+                "elite_bias": trial.suggest_float("elite_bias", 0.55, 0.75),
+                "seed": trial.suggest_int("seed", 1, 10000),
+            }
+
+            res = self.optimize_single(
+                trial=trial,
+                verbose=False,
+                optuna_prune=optuna_prune,
+                **(params | kwargs),
+            )
+            return res.F[0]
+
+        study_name = "bitwise-challenge-2022-2"
+        storage_name = f"sqlite:///{study_name}.db"
+        if not kwargs.get("resume", False):
+            Path(storage_name).unlink(missing_ok=True)
+        study = optuna.create_study(
+            study_name=study_name, storage=storage_name, load_if_exists=True
         )
-        initial_random = rng.random(
-            (population_size - initial_nonrandom_count, problem.n_var)
+        study.optimize(_optuna_objective, n_trials=n_trials)
+
+        return study
+
+    def _print_optuna_report(self, study):
+        print(f"Best value: {study.best_trial.value}")
+        print(f"Best parameters: {study.best_trial.params}")
+
+    def optimize_single(
+        self,
+        termination: dict | None = None,
+        x_path: os.PathLike | None = None,
+        metric_log: os.PathLike | None = None,
+        resume: bool = False,
+        plot: bool = False,
+        seed: int | None = None,
+        elite_frac: float = 0.2,
+        mutant_frac: float = 0.1,
+        elite_bias: float = 0.7,
+        **kwargs,
+    ) -> Result:
+        """Main optimization method
+
+        Args:
+            termination (dict | None, optional): Keyword arguments
+            for termination criteria. See
+            :func:`~pymoo.util.termination.default.SingleObjectiveDefaultTermination`.
+            Defaults to None.
+            x_path (os.PathLike | None): location for saving intermediate
+            x values for population.
+            metric_log (os.PathLike | None): location for logging
+            optimization running metrics.
+            resume (bool): continue from previous result in x_path.
+            Defaults to False.
+            kwargs: keyword arguments to minimization problem
+
+        Returns:
+            Result: pymoo optimization result
+        """
+        problem = MyProblem(self.network_json)
+
+        population_size = 2 * problem.n_var
+        initial_nonrandom_count = 5
+
+        if resume:
+            sampling = np.load(x_path)
+        else:
+            rng = np.random.default_rng(seed)
+            initial_feasible = _create_feasible_solutions(
+                self.network_json, rng, initial_nonrandom_count
+            )
+            initial_random = rng.random(
+                (population_size - initial_nonrandom_count, problem.n_var)
+            )
+            sampling = np.concatenate((initial_feasible, initial_random), axis=0)
+
+        n_gen_offset = _get_n_gen_offset(metric_log=metric_log) if resume else 0
+
+        algorithm = BRKGA(
+            n_elites=int(population_size * elite_frac),
+            n_offsprings=int(population_size * (1 - elite_frac - mutant_frac)),
+            n_mutants=int(population_size * mutant_frac),
+            bias=elite_bias,
+            eliminate_duplicates=MyDuplicateElimination(),
+            sampling=sampling,
+            callback=MyCallback(
+                plot=plot,
+                network_json=self.network_json,
+                x_path=x_path,
+                metric_log=metric_log,
+                resume=resume,
+                n_gen_offset=n_gen_offset,
+            ),
+            display=MyDisplay(n_gen_offset=n_gen_offset),
         )
-        sampling = np.concatenate((initial_feasible, initial_random), axis=0)
 
-    n_gen_offset = _get_n_gen_offset(metric_log=metric_log) if resume else 0
+        termination = SingleObjectiveDefaultTermination(**termination)
 
-    algorithm = BRKGA(
-        n_elites=int(population_size * 0.2),
-        n_offsprings=int(population_size * 0.7),
-        n_mutants=int(population_size * 0.1),
-        bias=0.7,
-        eliminate_duplicates=MyDuplicateElimination(),
-        sampling=sampling,
-        callback=MyCallback(
-            plot=plot,
-            network_json=network_json,
-            x_path=x_path,
-            metric_log=metric_log,
-            resume=resume,
-            n_gen_offset=n_gen_offset,
-        ),
-        display=MyDisplay(n_gen_offset=n_gen_offset),
-    )
+        res = self.minimize(problem, algorithm, termination, seed=seed, **kwargs)
 
-    termination = SingleObjectiveDefaultTermination(**termination)
+        return res
 
-    res = minimize(problem, algorithm, termination, seed=seed, **kwargs)
+    def minimize(self, problem, algorithm: Algorithm, termination, **kwargs):
+        algorithm.setup(problem, termination=termination, **kwargs)
 
-    return res
+        while algorithm.has_next():
+            algorithm.next()
+
+            optuna_trial = kwargs.get("trial")
+            optuna_prune = kwargs.get("optuna_prune")
+            if optuna_trial is not None:
+                intermediate_value = algorithm.opt[0].F[0]
+                optuna_trial.report(intermediate_value, step=algorithm.n_gen)
+                if optuna_prune and optuna_trial.should_prune():
+                    raise optuna.TrialPruned()
+
+        res = algorithm.result()
+        res.algorithm = algorithm
+        return res
+
+    def _print_single_report(self, res: Result):
+        base_net = BaseNetwork.from_json(self.network_json)
+
+        x_binary = res.opt.get("x_final")[0]
+        del_edges = (x_binary == 0).nonzero()[0]
+        remove_edges = np.array([base_net.edges[i] for i in del_edges.tolist()])
+
+        base_mat = base_net.to_adjacency_matrix()
+        new_net = NetworkGraph(base_mat)
+        new_net.remove_edges(remove_edges)
+
+        score = base_net.comparison_score(new_net)
+
+        print(
+            f"""
+    Binary random key genetic algorithm, with hyperparameter optimization
+    - Random initialization, with some pre-generated feasible results
+    - Minimize score of modified network graph
+    - Correction of infeasible solutions
+    - Arguments: {' '.join(sys.argv[1:])}
+    - {res.algorithm.n_gen} generations
+    - Best objective value: {res.F[0]:.2f}
+    - Best score: {score:.3f}
+    - Execution time: {res.exec_time:.2f} s
+    """
+        )
+        print("Solution:")
+        print(", ".join(del_edges.astype(str)))
 
 
 def _create_feasible_solutions(
