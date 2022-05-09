@@ -332,6 +332,12 @@ class BRKGAOptimization:
                 optuna_prune=optuna_prune,
                 **(params | kwargs),
             )
+
+            x_binary = res.opt.get("x_final")[0]
+            del_edges = (x_binary == 0).nonzero()[0]
+
+            trial.set_user_attr("del_edges", del_edges.tolist())
+
             return res.F[0]
 
         study_name = "bitwise-challenge-2022-2"
