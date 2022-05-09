@@ -39,6 +39,9 @@ def main(argv: list[str] = None):
             metric_log=parsed_args.metric_log,
             resume=parsed_args.resume,
             plot=parsed_args.plot,
+            elite_frac=parsed_args.elite_frac,
+            mutant_frac=parsed_args.mutant_frac,
+            elite_bias=parsed_args.elite_bias,
         )
 
     except KeyboardInterrupt:
@@ -89,6 +92,24 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
         "--plot", action="store_true", help="Display progress plot during calculation"
     )
     parser.add_argument("--seed", default=1, type=int, help="Random seed. Default: 1")
+    parser.add_argument(
+        "--elite-frac",
+        default=0.2,
+        type=float,
+        help="Elite fraction of population. Default: 0,2",
+    )
+    parser.add_argument(
+        "--mutant-frac",
+        default=0.1,
+        type=float,
+        help="Mutant fraction of population. Default: 0.1",
+    )
+    parser.add_argument(
+        "--elite-bias",
+        default=0.7,
+        type=float,
+        help="Probability of elite gene transfer. Default: 0.7",
+    )
 
     return parser.parse_args(args)
 
