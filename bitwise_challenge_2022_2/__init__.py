@@ -1,3 +1,3 @@
 """Jungle liana graph optimization coding challenge"""
 
-__version__ = "0.1.0"
+__version__ = "1.4.1"

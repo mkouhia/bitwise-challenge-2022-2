@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "bitwise-challenge-2022-2"
-version = "0.1.0"
-description = ""
+version = "1.4.1"
+description = "Genetic algorithm network optimizer for Bitwise code challenge"
 authors = ["Mikko Kouhia <mikko.kouhia@iki.fi>"]
 
 [tool.poetry.dependencies]
