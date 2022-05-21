@@ -82,11 +82,6 @@ def _parse_args(args: list[str]) -> argparse.Namespace:
         help="Location for saving intermediate x values for population. Default: opt_X_latest.npy",
     )
     parser.add_argument("--resume", action="store_true", help="Resume from xfile")
-    parser.add_argument(
-        "--multiprocessing",
-        action="store_true",
-        help="Use multiprocessing for problem evaluation",
-    )
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress output")
     parser.add_argument(
         "--plot", action="store_true", help="Display progress plot during calculation"
