@@ -12,7 +12,7 @@ $$ P_i = A W_t + B D_{avg} \, . $$
 
 Here, $A=0.1$, $B=2.1$, $W_t$ is the sum of length of all arcs and $D_{avg}$ average shortest path length from each individual point to any other point.
 
-Original data is included in this repository at [bitwise_challenge_2022_02/koodipahkina-data.json]().
+Original data is included in this repository at [bitwise_challenge_2022_2/koodipahkina-data.json](bitwise_challenge_2022_2/koodipahkina-data.json).
 
 
 ## Quickstart
@@ -101,7 +101,7 @@ For the competition entry details, see also output from
 ## Extras
 
 If installed with `poetry install --dev`, a library for plotting is included.
-Thus intermediate logs by the optimizer can be visualized with [scripts/plot_optimization_log.py](); see help with
+Thus intermediate logs by the optimizer can be visualized with [scripts/plot_optimization_log.py](scripts/plot_optimization_log.py); see help with
 
     python scripts/plot_optimization_log.py --help
 
